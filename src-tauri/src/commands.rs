@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Serialize};
 use tauri::{Manager, State, AppHandle}; // 引入 AppHandle
 use image::{ImageBuffer, Rgba};
 use std::process::Command as StdCommand;
@@ -10,24 +10,14 @@ use crate::settings::{AppSettings, AppState};
 use crate::translator;
 
 // --- 数据结构定义 ---
-#[derive(Debug, Deserialize)]
-struct OcrResult {
-    code: i32,
-    message: Option<String>,
-    data: Option<Vec<OcrData>>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OcrData {
-    text: String,
-}
+// 我们不再需要 OcrResult 和 OcrData 结构体，因为我们将手动解析 JSON Value。
+// 如果你愿意，可以保留它们，但它们在新的逻辑中不会被使用。
 
 #[derive(Debug, Serialize, Clone)]
 struct TranslationPayload {
     original_text: String,
     translated_text: String,
     error_message: Option<String>,
-    // --- 新增：用于前端获取图片路径 ---
     image_path: Option<String>,
 }
 
@@ -42,23 +32,19 @@ pub async fn process_screenshot_area(
 ) -> Result<(), String> {
     println!("接收到截图区域: x={}, y={}, width={}, height={}", x, y, width, height);
 
-    // 在 spawn 之前，只克隆那些确定需要的数据
     let settings_clone = state.settings.lock().unwrap().clone();
-
-    // AppHandle 可以安全地移动到新线程中
     let app_for_task = app.clone();
 
     tokio::spawn(async move {
         create_and_show_results_window(&app_for_task);
 
-        // 在新线程内部通过 AppHandle 获取 State
         if let Err(e) = capture_ocr_translate(&app_for_task, settings_clone, x, y, width, height).await {
             eprintln!("处理流程出错: {}", e);
             let payload = TranslationPayload {
                 original_text: "处理失败".to_string(),
                 translated_text: String::new(),
                 error_message: Some(e),
-                image_path: None, // 出错时没有图片路径
+                image_path: None,
             };
             app_for_task.emit_all("translation_result", payload).unwrap();
         }
@@ -67,7 +53,6 @@ pub async fn process_screenshot_area(
     Ok(())
 }
 
-// 函数签名不再需要 State 参数，直接使用 AppHandle
 async fn capture_ocr_translate(
     app: &AppHandle,
     settings: AppSettings,
@@ -76,6 +61,7 @@ async fn capture_ocr_translate(
     width: f64,
     height: f64,
 ) -> Result<(), String> {
+    // ... (截图和保存部分代码不变) ...
     // 1. 截图
     let screen = screenshots::Screen::from_point(x as i32, y as i32)
         .map_err(|e| format!("无法找到屏幕: {}", e))?;
@@ -104,6 +90,7 @@ async fn capture_ocr_translate(
         println!("最后截图路径已更新。");
     }
 
+    // ... (调用OCR进程部分代码不变) ...
     // 3. 调用本地 OCR
     let cwd = std::env::current_dir().map_err(|e| format!("无法获取当前工作目录: {}", e))?;
     let ocr_exe_path = cwd
@@ -139,24 +126,34 @@ async fn capture_ocr_translate(
     }
 
     let stdout = String::from_utf8_lossy(&ocr_output.stdout);
+    let json_str = stdout.lines().find(|line| line.starts_with('{')).unwrap_or("{}");
 
-    // PaddleOCR-json 可能输出多行日志，我们需要找到包含 JSON 结果的那一行
-    let json_str = stdout.lines().find(|line| line.starts_with('{')).unwrap_or("");
+    // --- 核心修复：手动解析 JSON ---
+    let ocr_value: serde_json::Value = serde_json::from_str(json_str)
+        .map_err(|e| format!("解析 OCR JSON 失败: {}. 原始输出: {}", e, stdout))?;
 
-    let ocr_result: OcrResult = serde_json::from_str(json_str)
-        .map_err(|e| format!("解析 OCR 结果失败: {}. 原始输出: {}", e, stdout))?;
+    let code = ocr_value["code"].as_i64().unwrap_or(0);
 
-    if ocr_result.code != 100 {
-        return Err(ocr_result.message.unwrap_or_else(|| "OCR 返回了未知错误".to_string()));
-    }
+    let original_text = match code {
+        100 => { // 成功
+            ocr_value["data"].as_array()
+                .unwrap_or(&vec![])
+                .iter()
+                .filter_map(|item| item["text"].as_str())
+                .map(|s| s.to_string())
+                .collect::<Vec<String>>()
+                .join(" ")
+        },
+        101 => { // 未找到文字
+            return Err("未识别到任何文字".to_string());
+        },
+        _ => { // 其他错误
+            let error_message = ocr_value["data"].as_str().unwrap_or("OCR 返回未知错误").to_string();
+            return Err(error_message);
+        }
+    };
 
-    // 提取并拼接所有识别到的文本
-    let original_text = ocr_result.data.unwrap_or_default()
-        .into_iter()
-        .map(|d| d.text)
-        .collect::<Vec<String>>()
-        .join(" ");
-
+    // 之前的检查可以移除，因为上面的 match 已经处理了空文本的情况
     if original_text.trim().is_empty() {
         return Err("未识别到任何文字".to_string());
     }
@@ -181,7 +178,6 @@ async fn capture_ocr_translate(
         original_text,
         translated_text,
         error_message: None,
-        // --- 新增：将路径传给前端 ---
         image_path: Some(image_path.to_str().unwrap().to_string())
     };
 
@@ -197,7 +193,7 @@ fn create_and_show_results_window(app: &AppHandle) {
         window.set_focus().unwrap();
     } else {
         tauri::WindowBuilder::new(&handle, "results", tauri::WindowUrl::App("results.html".into()))
-            .build() // 窗口属性已经在 tauri.conf.json 中定义，这里只需构建
+            .build()
             .unwrap();
     }
 }

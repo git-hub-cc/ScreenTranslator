@@ -74,8 +74,6 @@ pub fn register_global_shortcut(app_handle: AppHandle, shortcut: &str) -> Result
     manager.register(shortcut, move || {
         println!("全局快捷键 {} 被按下", shortcut_for_closure);
 
-        // --- 核心修正 1 ---
-        // 克隆 handle 以便在 move 闭包中使用
         let handle_for_closure = app_handle.clone();
         app_handle.run_on_main_thread(move || {
             if let Some(window) = handle_for_closure.get_window("screenshot") {
@@ -83,7 +81,13 @@ pub fn register_global_shortcut(app_handle: AppHandle, shortcut: &str) -> Result
                 window.set_focus().unwrap();
             } else {
                 tauri::WindowBuilder::new(&handle_for_closure, "screenshot", tauri::WindowUrl::App("screenshot.html".into()))
-                    .fullscreen(true).decorations(false).transparent(true).build().unwrap();
+                    .fullscreen(true)
+                    .decorations(false)
+                    .transparent(true)
+                    // --- BUG修复：明确禁止调整窗口大小，防止操作系统窗口贴靠功能干扰 ---
+                    .resizable(false)
+                    .build()
+                    .unwrap();
             }
         }).unwrap();
     }).map_err(Into::into)
@@ -96,7 +100,6 @@ fn register_f3_shortcut(app_handle: AppHandle) -> Result<(), tauri::Error> {
     manager.register("F3", move || {
         println!("F3 快捷键被按下");
 
-        // 克隆 handle 以便在新线程中使用
         let handle_for_thread = app_handle.clone();
 
         std::thread::spawn(move || {
@@ -114,8 +117,6 @@ fn register_f3_shortcut(app_handle: AppHandle) -> Result<(), tauri::Error> {
                         image_path: path.to_str().unwrap().to_string(),
                     };
 
-                    // --- 核心修正 3 ---
-                    // 克隆 handle 以便在 run_on_main_thread 的 move 闭包中使用
                     let handle_for_main_thread = handle_for_thread.clone();
                     handle_for_thread.run_on_main_thread(move || {
                         if let Some(window) = handle_for_main_thread.get_window("image_viewer") {
@@ -128,8 +129,6 @@ fn register_f3_shortcut(app_handle: AppHandle) -> Result<(), tauri::Error> {
                                 .resizable(true).skip_taskbar(true).visible(false);
 
                             if let Ok(window) = builder.build() {
-                                // --- 核心修正 2 ---
-                                // 克隆 window 以便在 once 的 move 闭包中使用
                                 let window_for_closure = window.clone();
                                 window.once("tauri://created", move |_| {
                                     window_for_closure.emit("display-image", payload).unwrap();

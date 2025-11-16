@@ -61,21 +61,23 @@ listen('display-image', async (event) => {
         await resizeWindowToFitImage(tempImg.naturalWidth, tempImg.naturalHeight);
         imageEl.src = payload.image_data_url;
         await appWindow.show();
-        await appWindow.setFocus();
+        await appWindow.set_focus(); // 使用 set_focus 保证跨平台兼容性
     };
     tempImg.src = payload.image_data_url;
 });
 
-// 按下 Esc 键关闭窗口
+// 按下 Esc 键隐藏窗口
 document.addEventListener('keydown', async (e) => {
     if (e.key === 'Escape') {
-        await appWindow.close();
+        // --- 核心修复 3: 从 close() 改为 hide() ---
+        await appWindow.hide();
     }
 });
 
-// 鼠标双击图片关闭窗口
+// 鼠标双击图片隐藏窗口
 imageEl.addEventListener('dblclick', async () => {
-    await appWindow.close();
+    // --- 核心修复 3: 从 close() 改为 hide() ---
+    await appWindow.hide();
 });
 
 // --- 新增：为整个窗口添加拖拽功能 ---
