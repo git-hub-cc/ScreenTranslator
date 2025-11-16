@@ -1,0 +1,110 @@
+{
+  "build": {
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "",
+    "devPath": "../src",
+    "distDir": "../src",
+    "withGlobalTauri": true
+  },
+  "package": {
+    "productName": "ScreenTranslator",
+    "version": "0.1.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "window": {
+        "all": true
+      },
+      "shell": {
+        "all": false,
+        "sidecar": true,
+        "scope": [
+          {
+            "name": "PaddleOCR-json",
+            "sidecar": true
+          }
+        ]
+      },
+      "http": {
+        "all": false,
+        "request": true,
+        "scope": [
+          "https://api-free.deepl.com/*",
+          "https://api.deepl.com/*"
+        ]
+      },
+      "globalShortcut": {
+        "all": true
+      },
+      "fs": {
+        "all": true,
+        "scope": [
+          "$APP/*",
+          "$RESOURCE/*"
+        ]
+      },
+      "path": {
+        "all": true
+      },
+      "notification": {
+        "all": true
+      },
+      "clipboard": {
+        "writeText": true
+      }
+    },
+    "bundle": {
+      "active": true,
+      "targets": "all",
+      "identifier": "com.tauri.screentranslator",
+      "icon": [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/128x128@2x.png",
+        "icons/icon.icns",
+        "icons/icon.ico"
+      ],
+      "resources": [
+      ]
+    },
+    "security": {
+      "csp": null
+    },
+    "systemTray": {
+      "iconPath": "icons/icon.ico",
+      "iconAsTemplate": true
+    },
+    "windows": [
+      {
+        "title": "ScreenTranslator 设置",
+        "label": "main",
+        "width": 550,
+        "height": 450,
+        "resizable": false,
+        "fullscreen": false,
+        "visible": true
+      },
+      {
+        "label": "screenshot",
+        "url": "screenshot.html",
+        "fullscreen": true,
+        "decorations": false,
+        "transparent": true,
+        "resizable": false,
+        "visible": false,
+        "skipTaskbar": true
+      },
+      {
+        "label": "results",
+        "url": "results.html",
+        "width": 400,
+        "height": 200,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "visible": false,
+        "skipTaskbar": true
+      }
+    ]
+  }
+}

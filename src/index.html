@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Screen Translator 设置</title>
+    <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="settings-container">
+    <h1>截图翻译设置</h1>
+
+    <!-- 快捷键设置 -->
+    <div class="setting-item">
+        <label for="shortcut-input">截图快捷键</label>
+        <input type="text" id="shortcut-input" placeholder="点击并按下快捷键" readonly>
+        <small>默认: Alt+Q。支持的组合键: Alt, Ctrl, Shift, Super (Win/Cmd)。</small>
+    </div>
+
+    <!-- API Key 设置 -->
+    <div class="setting-item">
+        <label for="api-key-input">DeepL API Key</label>
+        <input type="password" id="api-key-input" placeholder="请输入你的 DeepL API Key">
+        <small>获取key请访问 <a href="https://www.deepl.com/pro-api" target="_blank">DeepL API 官网</a>。支持 Free 和 Pro。</small>
+    </div>
+
+    <!-- 语言设置 -->
+    <div class="setting-item">
+        <label for="target-lang-select">目标语言</label>
+        <select id="target-lang-select">
+            <option value="ZH">简体中文 (Simplified Chinese)</option>
+            <option value="EN-US">英语 (American English)</option>
+            <option value="EN-GB">英语 (British English)</option>
+            <option value="JA">日语 (Japanese)</option>
+            <option value="KO">韩语 (Korean)</option>
+            <option value="DE">德语 (German)</option>
+            <option value="FR">法语 (French)</option>
+            <!-- 可以根据需要添加更多语言 -->
+        </select>
+    </div>
+
+    <!-- 开机自启 -->
+    <div class="setting-item checkbox-item">
+        <input type="checkbox" id="autostart-checkbox">
+        <label for="autostart-checkbox">开机自启动</label>
+    </div>
+
+    <!-- 保存按钮 -->
+    <div class="actions">
+        <button id="save-btn">保存设置</button>
+        <p id="status-message"></p>
+    </div>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

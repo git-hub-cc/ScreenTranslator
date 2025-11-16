@@ -1,0 +1,54 @@
+[package]
+name = "src-tauri"
+version = "0.1.0"
+description = "A Tauri-based screenshot translator"
+authors = ["cc"]
+license = "MIT"
+repository = "https://github.com/git-hub-cc/ScreenTranslator"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+# Tauri 核心库，并开启所有需要的功能
+tauri = { version = "1.6", features = [
+    "window-all",         # 开启所有窗口管理功能
+    "shell-sidecar",      # 允许执行绑定的外部程序
+    "global-shortcut-all",# 允许注册全局快捷键
+    "fs-all",             # 开启所有文件系统操作权限
+    "path-all",           # 开启所有路径解析权限
+    "system-tray",        # 开启系统托盘功能
+    "http-request",       # 允许发起HTTP请求
+    "notification-all",   # 允许发送系统通知
+    "clipboard-write-text"] }
+# Tauri 插件：用于管理开机自启动
+tauri-plugin-autostart = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v1" }
+
+# Serde: 用于序列化和反序列化数据（例如 JSON）
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Tokio: 异步运行时，用于处理耗时操作
+tokio = { version = "1", features = ["full"] }
+
+# Reqwest: 一个强大易用的异步HTTP客户端，用于调用翻译API
+reqwest = { version = "0.12", features = ["json"] }
+
+# Screenshots: 用于截取屏幕
+screenshots = "0.6"
+
+# Image: 用于处理图像数据，例如保存为文件
+image = "0.24"
+
+# Arboard: 用于跨平台剪切板操作
+arboard = "3"
+
+# once_cell: 用于安全地初始化全局静态变量
+once_cell = "1.19"
+async-trait = "0.1.89"
+
+
+[features]
+# 生产构建时需要此特性，请勿移除！
+custom-protocol = ["tauri/custom-protocol"]

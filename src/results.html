@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Translation Result</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body data-tauri-drag-region>
+<!-- 结果展示容器 -->
+<div id="result-container">
+    <!-- 头部工具栏 -->
+    <div class="toolbar" data-tauri-drag-region>
+        <div class="actions">
+            <button id="pin-btn" title="钉在最前">📌</button>
+            <button id="copy-original-btn" title="复制原文">📄</button>
+            <button id="copy-translated-btn" title="复制译文">📋</button>
+            <button id="tts-btn" title="朗读译文">🔊</button>
+        </div>
+    </div>
+    <!-- 原始文本区域 -->
+    <div class="text-area original">
+        <pre id="original-text">识别中...</pre>
+    </div>
+    <!-- 分隔线 -->
+    <hr />
+    <!-- 翻译文本区域 -->
+    <div class="text-area translated">
+        <pre id="translated-text">翻译中...</pre>
+    </div>
+</div>
+
+<!-- 加载结果处理的JS脚本 -->
+<script type="module" src="js/results.js"></script>
+</body>
+</html>

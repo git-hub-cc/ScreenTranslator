@@ -1,0 +1,16 @@
+# General
+.DS_Store
+*.log
+.idea/
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Tauri
+src-tauri/target/
+src-tauri/Cargo.lock
+
+# External Binaries

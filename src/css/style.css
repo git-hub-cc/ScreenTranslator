@@ -1,0 +1,217 @@
+/* --- 全局样式重置与变量定义 --- */
+:root {
+    --bg-color: #282c34;
+    --bg-color-transparent: rgba(40, 44, 52, 0.95);
+    --text-color: #abb2bf;
+    --text-color-bright: #e6e6e6;
+    --text-color-dim: #888;
+    --border-color: rgba(255, 255, 255, 0.1);
+    --accent-color: #61afef;
+    --error-color: #ff6b6b;
+    --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    font-family: var(--font-family);
+    background-color: transparent;
+    color: var(--text-color);
+}
+
+
+/* --- 设置窗口 (index.html) 样式 --- */
+.settings-container {
+    box-sizing: border-box;
+    width: 100vw;
+    height: 100vh;
+    padding: 2rem;
+    background-color: var(--bg-color);
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem; /* 设置项之间的间距 */
+}
+
+.settings-container h1 {
+    color: var(--text-color-bright);
+    margin-top: 0;
+    text-align: center;
+}
+
+.setting-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.setting-item label {
+    font-weight: bold;
+}
+
+.setting-item input[type="text"],
+.setting-item input[type="password"],
+.setting-item select {
+    padding: 0.6rem;
+    background-color: #3a3f4b;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-color-bright);
+    font-size: 14px;
+}
+
+.setting-item input[type="text"]:focus,
+.setting-item input[type="password"]:focus,
+.setting-item select:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 5px rgba(97, 175, 239, 0.5);
+}
+
+#shortcut-input {
+    cursor: pointer;
+}
+#shortcut-input:focus {
+    cursor: text;
+}
+
+.setting-item small {
+    font-size: 0.8rem;
+    color: var(--text-color-dim);
+}
+.setting-item small a {
+    color: var(--accent-color);
+    text-decoration: none;
+}
+.setting-item small a:hover {
+    text-decoration: underline;
+}
+
+.checkbox-item {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.actions {
+    margin-top: auto; /* 将按钮推到底部 */
+    text-align: center;
+}
+
+#save-btn {
+    padding: 0.7rem 1.5rem;
+    background-color: var(--accent-color);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background-color 0.2s;
+}
+
+#save-btn:hover {
+    background-color: #529bda;
+}
+
+#status-message {
+    margin-top: 1rem;
+    height: 1rem; /* 预留空间，防止布局抖动 */
+    font-size: 0.9rem;
+}
+
+/* --- 截图窗口 (screenshot.html) 样式 --- */
+#canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    cursor: crosshair;
+}
+
+/* --- 结果窗口 (results.html) 样式 --- */
+body[data-tauri-drag-region] {
+    cursor: grab;
+    user-select: none;
+}
+
+#result-container {
+    box-sizing: border-box;
+    width: 100vw;
+    height: 100vh;
+    background-color: var(--bg-color-transparent);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+}
+
+.toolbar {
+    padding: 4px 8px;
+    flex-shrink: 0;
+    display: flex;
+    justify-content: flex-end; /* 按钮靠右 */
+    border-bottom: 1px solid var(--border-color);
+}
+
+.toolbar .actions button {
+    background: none;
+    border: none;
+    color: var(--text-color);
+    font-size: 16px;
+    padding: 4px 6px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.toolbar .actions button:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.toolbar .actions button.active {
+    background-color: var(--accent-color);
+    color: #fff;
+}
+
+
+#result-container hr {
+    width: 100%;
+    border: none;
+    border-top: 1px solid var(--border-color);
+    margin: 0;
+}
+
+.text-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 12px;
+    scrollbar-width: thin;
+    scrollbar-color: #555 #333;
+    min-height: 0; /* flex布局中重要属性，防止内容溢出 */
+}
+
+.text-area pre {
+    user-select: text;
+    cursor: text;
+    white-space: pre-wrap;
+    word-break: break-all;
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.original pre {
+    color: var(--text-color-dim);
+    font-size: 13px;
+}
+
+.translated pre {
+    color: var(--text-color-bright);
+    font-size: 15px;
+}
+
+.text-area::-webkit-scrollbar { width: 6px; }
+.text-area::-webkit-scrollbar-track { background: #333; border-radius: 3px; }
+.text-area::-webkit-scrollbar-thumb { background-color: #555; border-radius: 3px; }
