@@ -9,10 +9,6 @@ use std::os::windows::process::CommandExt;
 use crate::settings::{AppSettings, AppState};
 use crate::translator;
 
-// --- 数据结构定义 ---
-// 我们不再需要 OcrResult 和 OcrData 结构体，因为我们将手动解析 JSON Value。
-// 如果你愿意，可以保留它们，但它们在新的逻辑中不会被使用。
-
 #[derive(Debug, Serialize, Clone)]
 struct TranslationPayload {
     original_text: String,
@@ -61,7 +57,6 @@ async fn capture_ocr_translate(
     width: f64,
     height: f64,
 ) -> Result<(), String> {
-    // ... (截图和保存部分代码不变) ...
     // 1. 截图
     let screen = screenshots::Screen::from_point(x as i32, y as i32)
         .map_err(|e| format!("无法找到屏幕: {}", e))?;
@@ -90,15 +85,15 @@ async fn capture_ocr_translate(
         println!("最后截图路径已更新。");
     }
 
-    // ... (调用OCR进程部分代码不变) ...
+    // --- 核心修复：使用 Tauri 的 Path Resolver 来定位打包后的资源 ---
     // 3. 调用本地 OCR
-    let cwd = std::env::current_dir().map_err(|e| format!("无法获取当前工作目录: {}", e))?;
-    let ocr_exe_path = cwd
-        .join("external")
-        .join("PaddleOCR-json")
-        .join("PaddleOCR-json.exe")
-        .canonicalize()
+    let ocr_exe_path = app
+        .path_resolver()
+        .resolve_resource("external/PaddleOCR-json/PaddleOCR-json.exe")
+        .ok_or_else(|| "在应用资源中找不到 OCR 可执行文件路径".to_string())?
+        .canonicalize() // canonicalize 仍然有用，可以解析为绝对路径
         .map_err(|e| format!("无法找到 or 规范化 OCR 可执行文件路径: {}. 请确认 external/PaddleOCR-json/PaddleOCR-json.exe 文件存在。", e))?;
+
 
     if !ocr_exe_path.exists() {
         return Err(format!("错误: OCR 可执行文件在路径 {:?} 下不存在!", ocr_exe_path));
@@ -128,7 +123,6 @@ async fn capture_ocr_translate(
     let stdout = String::from_utf8_lossy(&ocr_output.stdout);
     let json_str = stdout.lines().find(|line| line.starts_with('{')).unwrap_or("{}");
 
-    // --- 核心修复：手动解析 JSON ---
     let ocr_value: serde_json::Value = serde_json::from_str(json_str)
         .map_err(|e| format!("解析 OCR JSON 失败: {}. 原始输出: {}", e, stdout))?;
 
@@ -153,7 +147,6 @@ async fn capture_ocr_translate(
         }
     };
 
-    // 之前的检查可以移除，因为上面的 match 已经处理了空文本的情况
     if original_text.trim().is_empty() {
         return Err("未识别到任何文字".to_string());
     }
