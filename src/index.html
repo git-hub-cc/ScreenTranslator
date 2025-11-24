@@ -17,20 +17,18 @@
         <small>默认:F1。用于启动截图。支持的组合键: Alt, Ctrl, Shift, Super (Win/Cmd)。</small>
     </div>
 
-    <!-- --- 新增：查看截图快捷键 --- -->
+    <!-- 查看截图快捷键 -->
     <div class="setting-item">
         <label for="view-shortcut-input">查看截图快捷键</label>
         <input type="text" id="view-shortcut-input" placeholder="点击并按下快捷键" readonly>
         <small>默认:F3。用于重新打开上一次的截图预览窗口。</small>
     </div>
 
-
     <!-- 语言设置 -->
     <div class="setting-item">
         <label for="target-lang-select">目标语言</label>
         <select id="target-lang-select">
             <option value="zh">简体中文 (Simplified Chinese)</option>
-            <!-- --- 新增：英语选项 --- -->
             <option value="en">English</option>
             <!-- 可以根据需要添加更多语言 -->
         </select>
@@ -46,6 +44,13 @@
     <div class="setting-item checkbox-item">
         <input type="checkbox" id="translation-checkbox">
         <label for="translation-checkbox">开启翻译</label>
+    </div>
+
+    <!-- --- 新增：保留换行复选框 --- -->
+    <!-- 我们在这里添加一个新的复选框，用于控制是否保留OCR结果中的换行符 -->
+    <div class="setting-item checkbox-item">
+        <input type="checkbox" id="line-break-checkbox">
+        <label for="line-break-checkbox">保留原文换行</label>
     </div>
 
     <!-- 开机自启 -->

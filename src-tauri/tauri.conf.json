@@ -8,7 +8,7 @@
   },
   "package": {
     "productName": "ScreenTranslator",
-    "version": "0.2.0"
+    "version": "0.3.0"
   },
   "tauri": {
     "allowlist": {
@@ -84,7 +84,7 @@
         "title": "ScreenTranslator 设置",
         "label": "main",
         "width": 550,
-        "height": 750,
+        "height": 800,
         "resizable": false,
         "fullscreen": false,
         "visible": true
@@ -102,8 +102,8 @@
       {
         "label": "results",
         "url": "results.html",
-        "width": 400,
-        "height": 200,
+        "width": 500,
+        "height": 700,
         "decorations": false,
         "alwaysOnTop": true,
         "visible": false,

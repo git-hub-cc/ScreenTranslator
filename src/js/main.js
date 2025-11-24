@@ -12,19 +12,15 @@ const saveBtn = document.getElementById('save-btn');
 const statusMessage = document.getElementById('status-message');
 const ocrCheckbox = document.getElementById('ocr-checkbox');
 const translationCheckbox = document.getElementById('translation-checkbox');
+// --- 新增：获取保留换行复选框的DOM元素 ---
+const lineBreakCheckbox = document.getElementById('line-break-checkbox');
 
-// --- 最小侵入修复：为输入框设置初始默认值 ---
-// 这可以防止在从后端加载真实设置值之前的短暂空白状态。
+
+// --- 状态与默认值 ---
 shortcutInput.value = 'F1';
 viewShortcutInput.value = 'F3';
 
-
-// --- 状态变量 ---
-// isRecording 状态需要为每个输入框单独管理，因此使用对象
-let isRecording = {
-    main: false,
-    view: false,
-};
+let isRecording = { main: false, view: false };
 let currentSettings = {};
 
 // --- 函数定义 ---
@@ -45,6 +41,8 @@ async function loadSettings() {
         autostartCheckbox.checked = settings.autostart;
         ocrCheckbox.checked = settings.enable_ocr;
         translationCheckbox.checked = settings.enable_translation;
+        // --- 新增：根据从后端获取的设置，更新“保留换行”复选框的状态 ---
+        lineBreakCheckbox.checked = settings.preserve_line_breaks;
 
     } catch (error) {
         console.error("加载设置失败:", error);
@@ -56,13 +54,13 @@ async function loadSettings() {
  * 保存当前UI上的设置到后端
  */
 async function saveSettings() {
+    // ... (快捷键验证逻辑保持不变)
     const shortcutValue = shortcutInput.value.trim();
     if (!shortcutValue) {
         showStatusMessage("截图快捷键不能为空！", true);
         shortcutInput.focus();
         return;
     }
-
     const viewShortcutValue = viewShortcutInput.value.trim();
     if (!viewShortcutValue) {
         showStatusMessage("查看截图快捷键不能为空！", true);
@@ -78,6 +76,9 @@ async function saveSettings() {
         autostart: autostartCheckbox.checked,
         enable_ocr: ocrCheckbox.checked,
         enable_translation: translationCheckbox.checked,
+        // --- 新增：将“保留换行”复选框的当前状态也加入到要保存的设置对象中 ---
+        // 键名 `preserve_line_breaks` 与 Rust 结构体中的字段名保持一致
+        preserve_line_breaks: lineBreakCheckbox.checked,
     };
 
     try {
@@ -91,7 +92,7 @@ async function saveSettings() {
 }
 
 /**
- * 在界面上显示状态消息
+ * 在界面上显示状态消息 (无修改)
  */
 function showStatusMessage(msg, isError = false) {
     statusMessage.textContent = msg;
@@ -102,7 +103,7 @@ function showStatusMessage(msg, isError = false) {
 }
 
 /**
- * 格式化并显示快捷键
+ * 格式化并显示快捷键 (无修改)
  */
 function formatShortcut(e) {
     const parts = [];
@@ -120,75 +121,64 @@ function formatShortcut(e) {
 }
 
 
-// --- 事件监听 ---
+// --- 事件监听 (无修改) ---
 
 saveBtn.addEventListener('click', saveSettings);
 
-// -- 主截图快捷键的监听 --
 shortcutInput.addEventListener('focus', () => {
     isRecording.main = true;
     shortcutInput.value = '请按下快捷键...';
 });
-
 shortcutInput.addEventListener('blur', () => {
     isRecording.main = false;
     if (shortcutInput.value === '请按下快捷键...') {
         shortcutInput.value = currentSettings.shortcut || 'F1';
     }
 });
-
 shortcutInput.addEventListener('keydown', (e) => {
     if (isRecording.main) {
         e.preventDefault();
         const formatted = formatShortcut(e);
         if (formatted && (formatted.includes('+') || formatted.startsWith('F'))) {
             shortcutInput.value = formatted;
-            shortcutInput.blur(); // 录制成功后自动失焦
+            shortcutInput.blur();
         }
     }
 });
 
-// -- “查看截图快捷键”的监听 --
 viewShortcutInput.addEventListener('focus', () => {
     isRecording.view = true;
     viewShortcutInput.value = '请按下快捷键...';
 });
-
 viewShortcutInput.addEventListener('blur', () => {
     isRecording.view = false;
-    // 如果用户什么都没按就离开，恢复为旧的有效快捷键
     if (viewShortcutInput.value === '请按下快捷键...') {
         viewShortcutInput.value = currentSettings.view_image_shortcut || 'F3';
     }
 });
-
 viewShortcutInput.addEventListener('keydown', (e) => {
     if (isRecording.view) {
         e.preventDefault();
         const formatted = formatShortcut(e);
-        // 确保是有效的组合键或功能键
         if (formatted && (formatted.includes('+') || formatted.startsWith('F'))) {
             viewShortcutInput.value = formatted;
-            viewShortcutInput.blur(); // 录制成功后自动失焦
+            viewShortcutInput.blur();
         }
     }
 });
 
-
-// -- 功能开关联动逻辑 --
 translationCheckbox.addEventListener('change', () => {
     if (translationCheckbox.checked) {
         ocrCheckbox.checked = true;
     }
 });
-
 ocrCheckbox.addEventListener('change', () => {
     if (!ocrCheckbox.checked) {
         translationCheckbox.checked = false;
     }
 });
 
-// -- 初始化 --
+// --- 初始化 (无修改) ---
 listen('backend-ready', () => {
     console.log("接收到 'backend-ready' 事件，开始加载设置...");
     loadSettings();
