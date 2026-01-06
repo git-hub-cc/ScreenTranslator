@@ -3,9 +3,11 @@ use tauri::{Manager, State};
 use std::process::Command as StdCommand;
 use encoding_rs::GBK;
 use std::fs;
+use std::io::Write;
 use base64::{Engine as _, engine::general_purpose};
 use std::sync::atomic::Ordering;
 use tauri::api::notification::Notification;
+use futures_util::StreamExt;
 
 use crate::ImageViewerPayload;
 use crate::settings::{AppSettings, AppState, LastOcrResult, copy_image_to_clipboard, save_image_to_desktop};
@@ -15,23 +17,181 @@ use crate::translator;
 use std::os::windows::process::CommandExt;
 
 // --- 事件 Payload 定义 ---
-
-#[derive(Debug, Serialize, Clone)]
-struct OcrPayload {
-    original_text: Option<String>,
-    error_message: Option<String>,
-    image_path: String,
+#[derive(Clone, Serialize)]
+struct DownloadProgressPayload {
+    progress: u64,
+    total: u64,
+    status: String,
 }
 
-#[derive(Debug, Serialize, Clone)]
-struct TranslationUpdatePayload {
-    translated_text: Option<String>,
-    error_message: Option<String>,
-}
+// --- 常量定义 ---
+// OCR 引擎 (RapidOCR)
+const OCR_URL: &str = "https://github.com/hiroi-sora/RapidOCR-json/releases/download/v0.2.0/RapidOCR-json_v0.2.0.7z";
+const OCR_EXE_NAME: &str = "RapidOCR-json.exe";
+// --- 新增：定义解压后的子目录名 ---
+const OCR_DIR_NAME: &str = "RapidOCR-json_v0.2.0";
+
+// 翻译引擎 (LocalTranslator)
+const TRANSLATOR_URL: &str = "https://github.com/git-hub-cc/LocalTranslator/releases/download/V0.1.0/LocalTranslator-0.1.0.zip";
+const TRANSLATOR_EXE_NAME: &str = "translate_engine.exe";
 
 // --- Tauri 命令定义 ---
 
-/// 处理截图区域的主入口
+// --- OCR 引擎管理 ---
+#[tauri::command]
+pub async fn check_ocr_status(app: tauri::AppHandle) -> Result<bool, String> {
+    let local_data_dir = app.path_resolver().app_local_data_dir()
+        .ok_or("无法获取本地数据目录")?;
+    // --- 修正：在路径中加入子目录 ---
+    let exe_path = local_data_dir.join(OCR_DIR_NAME).join(OCR_EXE_NAME);
+    let exists = exe_path.exists();
+    println!("[STATUS] 检查 OCR 状态: 路径='{:?}', 是否存在={}", exe_path, exists);
+    Ok(exists)
+}
+
+#[tauri::command]
+pub async fn download_ocr(app: tauri::AppHandle) -> Result<(), String> {
+    println!("[DOWNLOAD_OCR] 开始下载 OCR 引擎...");
+    let window = app.get_window("main").ok_or("找不到主窗口")?;
+    let local_data_dir = app.path_resolver().app_local_data_dir().ok_or("无法获取本地数据目录")?;
+    println!("[DOWNLOAD_OCR] 本地数据目录: {:?}", local_data_dir);
+    if !local_data_dir.exists() {
+        println!("[DOWNLOAD_OCR] 目录不存在，正在创建...");
+        fs::create_dir_all(&local_data_dir).map_err(|e| format!("创建目录失败: {}", e))?;
+    }
+    let archive_path = local_data_dir.join("ocr.7z");
+    println!("[DOWNLOAD_OCR] 存档将保存到: {:?}", archive_path);
+
+    // 1. 下载文件
+    println!("[DOWNLOAD_OCR] 正在从 URL 下载: {}", OCR_URL);
+    let client = reqwest::Client::new();
+    let res = client.get(OCR_URL).send().await.map_err(|e| {
+        let err_msg = format!("请求失败: {}", e);
+        println!("[DOWNLOAD_OCR] 错误: {}", err_msg);
+        err_msg
+    })?;
+    let total_size = res.content_length().unwrap_or(0);
+    println!("[DOWNLOAD_OCR] 文件总大小: {} bytes", total_size);
+
+    let mut downloaded: u64 = 0;
+    let mut stream = res.bytes_stream();
+    let mut file = fs::File::create(&archive_path).map_err(|e| {
+        let err_msg = format!("创建文件失败: {}", e);
+        println!("[DOWNLOAD_OCR] 错误: {}", err_msg);
+        err_msg
+    })?;
+
+    while let Some(item) = stream.next().await {
+        let chunk = item.map_err(|e| {
+            let err_msg = format!("下载流出错: {}", e);
+            println!("[DOWNLOAD_OCR] 错误: {}", err_msg);
+            err_msg
+        })?;
+        file.write_all(&chunk).map_err(|e| {
+            let err_msg = format!("写入文件块失败: {}", e);
+            println!("[DOWNLOAD_OCR] 错误: {}", err_msg);
+            err_msg
+        })?;
+        downloaded += chunk.len() as u64;
+        window.emit("ocr-download-progress", DownloadProgressPayload {
+            progress: downloaded, total: total_size, status: "downloading".to_string(),
+        }).unwrap_or(());
+    }
+    println!("[DOWNLOAD_OCR] 下载完成. 总共下载 {} bytes", downloaded);
+
+    // 2. 解压文件 (.7z)
+    println!("[DOWNLOAD_OCR] 开始解压文件: {:?}", archive_path);
+    window.emit("ocr-download-progress", DownloadProgressPayload {
+        progress: total_size, total: total_size, status: "extracting".to_string(),
+    }).unwrap_or(());
+
+    sevenz_rust::decompress_file(&archive_path, &local_data_dir)
+        .map_err(|e| {
+            let err_msg = format!("解压7z文件失败: {:?}", e);
+            println!("[DOWNLOAD_OCR] 错误: {}", err_msg);
+            err_msg
+        })?;
+    println!("[DOWNLOAD_OCR] 解压成功到: {:?}", local_data_dir);
+
+    // 3. 清理并通知完成
+    println!("[DOWNLOAD_OCR] 删除临时存档: {:?}", archive_path);
+    let _ = fs::remove_file(archive_path);
+    println!("[DOWNLOAD_OCR] OCR 引擎安装流程完成.");
+    window.emit("ocr-download-progress", DownloadProgressPayload {
+        progress: total_size, total: total_size, status: "completed".to_string(),
+    }).unwrap_or(());
+
+    Ok(())
+}
+
+
+// --- 翻译引擎管理 ---
+#[tauri::command]
+pub async fn check_translator_status(app: tauri::AppHandle) -> Result<bool, String> {
+    let local_data_dir = app.path_resolver().app_local_data_dir()
+        .ok_or("无法获取本地数据目录")?;
+    let exe_path = local_data_dir.join(TRANSLATOR_EXE_NAME);
+    Ok(exe_path.exists())
+}
+
+#[tauri::command]
+pub async fn download_translator(app: tauri::AppHandle) -> Result<(), String> {
+    let window = app.get_window("main").ok_or("找不到主窗口")?;
+    let local_data_dir = app.path_resolver().app_local_data_dir().ok_or("无法获取本地数据目录")?;
+    if !local_data_dir.exists() {
+        fs::create_dir_all(&local_data_dir).map_err(|e| format!("创建目录失败: {}", e))?;
+    }
+    let zip_path = local_data_dir.join("translator.zip");
+
+    // 1. 下载文件
+    let client = reqwest::Client::new();
+    let res = client.get(TRANSLATOR_URL).send().await.map_err(|e| format!("请求失败: {}", e))?;
+    let total_size = res.content_length().unwrap_or(0);
+    let mut downloaded: u64 = 0;
+    let mut stream = res.bytes_stream();
+    let mut file = fs::File::create(&zip_path).map_err(|e| format!("创建文件失败: {}", e))?;
+    while let Some(item) = stream.next().await {
+        let chunk = item.map_err(|e| format!("下载出错: {}", e))?;
+        file.write_all(&chunk).map_err(|e| format!("写入文件失败: {}", e))?;
+        downloaded += chunk.len() as u64;
+        window.emit("download-progress", DownloadProgressPayload {
+            progress: downloaded, total: total_size, status: "downloading".to_string(),
+        }).unwrap_or(());
+    }
+
+    // 2. 解压文件 (.zip)
+    window.emit("download-progress", DownloadProgressPayload {
+        progress: total_size, total: total_size, status: "extracting".to_string(),
+    }).unwrap_or(());
+
+    let file = fs::File::open(&zip_path).map_err(|e| format!("打开压缩包失败: {}", e))?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("读取压缩包失败: {}", e))?;
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i).map_err(|e| format!("读取文件失败: {}", e))?;
+        let outpath = match file.enclosed_name() {
+            Some(path) => local_data_dir.join(path),
+            None => continue,
+        };
+        if file.name().ends_with('/') {
+            fs::create_dir_all(&outpath).map_err(|e| format!("创建目录失败: {}", e))?;
+        } else {
+            if let Some(p) = outpath.parent() {
+                if !p.exists() { fs::create_dir_all(&p).map_err(|e| format!("创建父目录失败: {}", e))?; }
+            }
+            let mut outfile = fs::File::create(&outpath).map_err(|e| format!("创建解压文件失败: {}", e))?;
+            std::io::copy(&mut file, &mut outfile).map_err(|e| format!("解压失败: {}", e))?;
+        }
+    }
+
+    // 3. 清理并通知完成
+    let _ = fs::remove_file(zip_path);
+    window.emit("download-progress", DownloadProgressPayload {
+        progress: total_size, total: total_size, status: "completed".to_string(),
+    }).unwrap_or(());
+    Ok(())
+}
+
+// --- 核心功能命令 ---
 #[tauri::command]
 pub async fn process_screenshot_area(
     app: tauri::AppHandle,
@@ -39,39 +199,29 @@ pub async fn process_screenshot_area(
     x: f64, y: f64, width: f64, height: f64,
 ) -> Result<(), String> {
     println!("[COMMANDS] 处理截图区域: x={}, y={}, w={}, h={}", x, y, width, height);
-
     let fullscreen_image = {
         let mut capture_cache = state.fullscreen_capture.lock().unwrap();
         capture_cache.take().ok_or("错误：在 AppState 中未找到缓存的全屏截图。")?
     };
-
     let cropped_image_buffer = image::imageops::crop_imm(
-        &fullscreen_image,
-        x as u32, y as u32, width as u32, height as u32,
+        &fullscreen_image, x as u32, y as u32, width as u32, height as u32,
     ).to_image();
-
     let settings = state.settings.lock().unwrap().clone();
     let app_for_task = app.clone();
-
     tokio::spawn(async move {
         let temp_dir = app_for_task.path_resolver().app_cache_dir().unwrap().join("tmp");
         let _ = tokio::fs::create_dir_all(&temp_dir).await;
         let image_path = temp_dir.join("screenshot.png");
-
         if let Err(e) = cropped_image_buffer.save(&image_path) {
             eprintln!("[COMMANDS] 保存截图失败: {}", e);
             release_lock(&app_for_task);
             return;
         }
-
         let image_path_str = image_path.to_str().unwrap().to_string();
-
         {
             let state: State<AppState> = app_for_task.state();
             *state.last_screenshot_path.lock().unwrap() = Some(image_path.clone());
         }
-
-        // 核心分发逻辑
         match settings.primary_action.as_str() {
             "ocr" => handle_ocr_mode(&app_for_task, &image_path_str, &settings, false).await,
             "ocr_translate" => handle_ocr_mode(&app_for_task, &image_path_str, &settings, true).await,
@@ -79,14 +229,11 @@ pub async fn process_screenshot_area(
             "save" => handle_save_mode(&app_for_task, image_path_str).await,
             "preview" | _ => handle_preview_mode(&app_for_task, &image_path, image_path_str).await,
         }
-
         release_lock(&app_for_task);
     });
-
     Ok(())
 }
 
-/// 手动处理图片指令
 #[tauri::command]
 pub async fn process_image_from_path(
     app: tauri::AppHandle,
@@ -96,7 +243,6 @@ pub async fn process_image_from_path(
 ) -> Result<(), String> {
     println!("[COMMANDS] 手动处理图片: {}, 动作: {}", path, action);
     let settings = state.settings.lock().unwrap().clone();
-
     if action == "ocr" {
         handle_ocr_mode(&app, &path, &settings, false).await;
         let app_handle = app.clone();
@@ -107,7 +253,7 @@ pub async fn process_image_from_path(
     Ok(())
 }
 
-// --- 内部处理逻辑 ---
+// --- 辅助函数 ---
 
 async fn handle_copy_mode(app: &tauri::AppHandle, path: String) {
     match copy_image_to_clipboard(path).await {
@@ -143,20 +289,17 @@ async fn handle_ocr_mode(
     do_translate: bool
 ) {
     let ocr_res = perform_ocr(app, image_path, settings);
-
     match ocr_res {
         Ok(text) => {
             if let Ok(mut clipboard) = arboard::Clipboard::new() {
                 let _ = clipboard.set_text(text.clone());
             }
-
             if !do_translate {
                 send_notification(app, "✅ 文字识别成功", "内容已复制到剪贴板。");
                 cache_result(app, Some(text), None, image_path.to_string());
             } else {
                 let translator = translator::get_translator(app);
                 let trans_res = translator.translate(&text, &settings.target_lang).await;
-
                 match trans_res {
                     Ok(trans_text) => {
                         if let Ok(mut clipboard) = arboard::Clipboard::new() {
@@ -166,20 +309,19 @@ async fn handle_ocr_mode(
                         cache_result(app, Some(text), Some(trans_text), image_path.to_string());
                     },
                     Err(e) => {
-                        send_notification(app, "⚠️ 翻译失败", &format!("OCR成功但翻译出错: {}", e));
-                        cache_result(app, Some(text), None, image_path.to_string());
+                        let err_msg = if e.contains("找不到翻译引擎") { "未安装翻译引擎，请在设置中下载".to_string() } else { format!("OCR成功但翻译出错: {}", e) };
+                        send_notification(app, "⚠️ 翻译失败", &err_msg);
+                        cache_result(app, Some(text), Some(err_msg), image_path.to_string());
                     }
                 }
             }
         },
         Err(e) => {
-            send_notification(app, "❌ 识别失败", &format!("出错: {}", e));
+            send_notification(app, "❌ 识别失败", &format!("{}", e));
             cache_result(app, None, None, image_path.to_string());
         }
     }
 }
-
-// --- 辅助函数 ---
 
 fn release_lock(app: &tauri::AppHandle) {
     let state: State<AppState> = app.state();
@@ -197,45 +339,90 @@ fn cache_result(app: &tauri::AppHandle, original: Option<String>, translated: Op
 }
 
 fn send_notification(app: &tauri::AppHandle, title: &str, body: &str) {
-    let _ = Notification::new(&app.config().tauri.bundle.identifier)
-        .title(title)
-        .body(body)
-        .show();
+    let _ = Notification::new(&app.config().tauri.bundle.identifier).title(title).body(body).show();
 }
 
 fn perform_ocr(app: &tauri::AppHandle, image_path_str: &str, settings: &AppSettings) -> Result<String, String> {
-    let ocr_exe_path = app.path_resolver().resolve_resource("external/PaddleOCR-json/PaddleOCR-json.exe")
-        .ok_or_else(|| "无法找到 OCR 程序".to_string())?.canonicalize().map_err(|e| format!("{}", e))?;
-    let ocr_dir = ocr_exe_path.parent().ok_or("无法获取OCR目录")?;
-    #[cfg(windows)] const CREATE_NO_WINDOW: u32 = 0x08000000;
+    println!("[OCR] 开始执行 OCR 流程...");
+    println!("[OCR] 待识别图片路径: {}", image_path_str);
 
+    // --- 修正：在路径中加入子目录 ---
+    let ocr_exe_path = app.path_resolver().app_local_data_dir()
+        .ok_or_else(|| "无法获取本地数据目录".to_string())?
+        .join(OCR_DIR_NAME)
+        .join(OCR_EXE_NAME);
+
+    println!("[OCR] 预期的 OCR 执行文件路径: {:?}", ocr_exe_path);
+
+    if !ocr_exe_path.exists() {
+        let err_msg = "未找到OCR引擎，请在设置页面下载。".to_string();
+        println!("[OCR] 错误: {}", err_msg);
+        return Err(err_msg);
+    }
+    println!("[OCR] OCR 执行文件存在, 准备调用.");
+
+    let ocr_dir = ocr_exe_path.parent().ok_or("无法获取OCR目录")?;
+    println!("[OCR] OCR 工作目录: {:?}", ocr_dir);
+
+    #[cfg(windows)] const CREATE_NO_WINDOW: u32 = 0x08000000;
     let mut command = StdCommand::new(&ocr_exe_path);
-    command.args(&[format!("--image_path={}", image_path_str)]).current_dir(&ocr_dir);
+    let arg = format!("--image_path={}", image_path_str);
+    command.args(&[arg.clone()]).current_dir(&ocr_dir);
     #[cfg(windows)] command.creation_flags(CREATE_NO_WINDOW);
 
-    let ocr_output = command.output().map_err(|e| format!("{}", e))?;
+    println!("[OCR] 准备执行命令: {:?} with arg: '{}'", ocr_exe_path, arg);
+
+    let ocr_output = command.output().map_err(|e| {
+        let err_msg = format!("执行OCR进程失败: {}", e);
+        println!("[OCR] 错误: {}", err_msg);
+        err_msg
+    })?;
+
+    println!("[OCR] 进程执行完毕. Status: {:?}", ocr_output.status);
+
     if !ocr_output.status.success() {
         let stderr = GBK.decode(&ocr_output.stderr).0.into_owned();
-        return Err(format!("OCR错误: {}", stderr));
+        let err_msg = format!("OCR进程返回错误: {}", stderr);
+        println!("[OCR] 错误: {}", err_msg);
+        println!("[OCR] Stderr (raw bytes): {:?}", &ocr_output.stderr);
+        return Err(err_msg);
     }
 
     let stdout = GBK.decode(&ocr_output.stdout).0.into_owned();
+    println!("[OCR] Stdout (decoded): '{}'", stdout);
+    println!("[OCR] Stdout (raw bytes): {:?}", &ocr_output.stdout);
+
     let json_start = stdout.lines().find(|line| line.starts_with('{')).unwrap_or("{}");
-    let ocr_value: serde_json::Value = serde_json::from_str(json_start).map_err(|e| format!("{}", e))?;
+    println!("[OCR] 提取到的 JSON 字符串: '{}'", json_start);
+
+    let ocr_value: serde_json::Value = serde_json::from_str(json_start).map_err(|e| {
+        let err_msg = format!("解析OCR结果JSON失败: {}", e);
+        println!("[OCR] 错误: {}", err_msg);
+        err_msg
+    })?;
+    println!("[OCR] 解析到的 JSON 值: {}", serde_json::to_string_pretty(&ocr_value).unwrap_or_default());
 
     if ocr_value["code"].as_i64().unwrap_or(0) == 100 {
         let separator = if settings.preserve_line_breaks { "\n" } else { " " };
         let text = ocr_value["data"].as_array().unwrap_or(&vec![]).iter()
             .filter_map(|item| item["text"].as_str()).collect::<Vec<_>>().join(separator);
-        if text.trim().is_empty() { Err("未识别到文字".to_string()) } else { Ok(text) }
+        if text.trim().is_empty() {
+            println!("[OCR] 警告: 未识别到任何文字.");
+            Err("未识别到文字".to_string())
+        } else {
+            println!("[OCR] 识别成功, 文本内容: '{}'", text);
+            Ok(text)
+        }
     } else {
-        Err(ocr_value["data"].as_str().unwrap_or("未知错误").to_string())
+        let err_msg = ocr_value["data"].as_str().unwrap_or("未知OCR错误").to_string();
+        println!("[OCR] 错误: OCR 引擎返回错误码: {}", err_msg);
+        Err(err_msg)
     }
 }
 
 fn create_and_show_image_viewer_window(app: &tauri::AppHandle, payload: ImageViewerPayload) {
     let handle = app.clone();
-    let handle_for_closure = handle.clone(); // 解决 E0505
+    let handle_for_closure = handle.clone();
     handle.run_on_main_thread(move || {
         if let Some(window) = handle_for_closure.get_window("image_viewer") {
             window.emit("display-image", payload).unwrap();

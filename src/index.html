@@ -5,10 +5,128 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Screen Translator 设置</title>
     <link rel="stylesheet" href="css/style.css" />
+    <style>
+        /* 针对下载区域的特定样式 */
+        .download-area {
+            background-color: var(--bg-color-lighter);
+            padding: 1rem;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            margin-top: 0.5rem;
+        }
+        .status-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.8rem;
+        }
+        .status-label {
+            font-size: 0.9rem;
+            color: var(--text-color-bright);
+        }
+        .status-badge {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+        .status-badge.installed {
+            background-color: rgba(40, 167, 69, 0.2);
+            color: #4cd964;
+            border: 1px solid #28a745;
+        }
+        .status-badge.missing {
+            background-color: rgba(255, 59, 48, 0.2);
+            color: #ff3b30;
+            border: 1px solid #ff3b30;
+        }
+        .download-button { /* 统一下载按钮样式 */
+            width: 100%;
+            padding: 8px;
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s, box-shadow 0.3s;
+        }
+        .download-button:hover {
+            background-color: var(--accent-hover);
+        }
+        .download-button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        /* 进度条容器 */
+        .progress-container {
+            margin-top: 0.8rem;
+            display: none; /* 默认隐藏 */
+        }
+        progress {
+            width: 100%;
+            height: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+            appearance: none;
+        }
+        progress::-webkit-progress-bar {
+            background-color: var(--bg-color);
+        }
+        progress::-webkit-progress-value {
+            background-color: var(--accent-color);
+        }
+        .progress-text {
+            font-size: 0.8rem;
+            color: var(--text-color-dim);
+            text-align: center;
+            margin-top: 4px;
+        }
+    </style>
 </head>
 <body>
 <div class="settings-container">
     <h1>截图翻译设置</h1>
+
+    <!-- 新增：OCR 引擎管理区域 -->
+    <div class="setting-item">
+        <label>本地识别引擎 (OCR)</label>
+        <div class="download-area">
+            <div class="status-row">
+                <span class="status-label">引擎状态:</span>
+                <span id="ocr-engine-status" class="status-badge missing">检查中...</span>
+            </div>
+            <button id="download-ocr-btn" class="download-button">下载 / 更新识别引擎</button>
+
+            <div id="ocr-progress-container" class="progress-container">
+                <progress id="ocr-download-progress" value="0" max="100"></progress>
+                <div id="ocr-progress-label" class="progress-text">准备下载...</div>
+            </div>
+            <small style="display:block; margin-top:8px; color:#888;">
+                启用本地识别模式需要下载约 80MB 的离线模型包。
+            </small>
+        </div>
+    </div>
+
+    <!-- 翻译引擎管理区域 -->
+    <div class="setting-item">
+        <label>本地翻译引擎</label>
+        <div class="download-area">
+            <div class="status-row">
+                <span class="status-label">引擎状态:</span>
+                <span id="engine-status" class="status-badge missing">检查中...</span>
+            </div>
+            <button id="download-btn" class="download-button">下载 / 更新翻译引擎</button>
+
+            <div id="progress-container" class="progress-container">
+                <progress id="download-progress" value="0" max="100"></progress>
+                <div id="progress-label" class="progress-text">准备下载...</div>
+            </div>
+            <small style="display:block; margin-top:8px; color:#888;">
+                启用“识别并翻译”模式需要下载约 350MB 的离线模型包。
+            </small>
+        </div>
+    </div>
 
     <!-- 1. 核心操作模式选择 (单选组) -->
     <div class="setting-item">
@@ -72,7 +190,6 @@
             <select id="target-lang-select">
                 <option value="zh">简体中文 (Simplified Chinese)</option>
                 <option value="en">English</option>
-                <!-- 可根据需要添加更多语言 -->
             </select>
         </div>
 
@@ -95,13 +212,6 @@
         <input type="text" id="view-shortcut-input" placeholder="点击并按下快捷键" readonly>
         <small>默认:F3。重新打开上一次的结果或图片。</small>
     </div>
-
-    <!--
-       已移除：
-       - 开机自启动选项
-       - 底部保存按钮及状态栏
-       (设置现在即时生效)
-    -->
 
 </div>
 <script type="module" src="js/main.js"></script>

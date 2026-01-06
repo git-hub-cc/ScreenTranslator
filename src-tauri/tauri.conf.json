@@ -8,7 +8,7 @@
   },
   "package": {
     "productName": "ScreenTranslator",
-    "version": "0.3.0"
+    "version": "0.4.0"
   },
   "tauri": {
     "allowlist": {
@@ -19,17 +19,16 @@
       "shell": {
         "all": false,
         "sidecar": true,
-        "scope": [
-          {
-            "name": "PaddleOCR-json",
-            "sidecar": true
-          }
-        ]
+        "scope": []
       },
       "http": {
         "all": false,
         "request": true,
-        "scope": []
+        "scope": [
+          "https://github.com/**",
+          "https://objects.githubusercontent.com/**",
+          "https://github.com/hiroi-sora/**"
+        ]
       },
       "globalShortcut": {
         "all": true
@@ -39,7 +38,9 @@
         "scope": [
           "$APP/*",
           "$RESOURCE/*",
-          "$DESKTOP/*"
+          "$DESKTOP/*",
+          "$APPDATA/*",
+          "$AppLocalData/*"
         ]
       },
       "path": {
@@ -63,9 +64,7 @@
         "icons/icon.icns",
         "icons/icon.ico"
       ],
-      "resources": [
-        "external/**"
-      ],
+      "resources": [],
       "windows": {
         "nsis": {
           "installMode": "currentUser"
@@ -84,7 +83,7 @@
         "title": "ScreenTranslator 设置",
         "label": "main",
         "width": 550,
-        "height": 800,
+        "height": 850,
         "resizable": false,
         "fullscreen": false,
         "visible": true

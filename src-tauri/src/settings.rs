@@ -3,8 +3,6 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{AppHandle, GlobalShortcutManager, PathResolver, State};
-// 移除不再需要的 autostart 引用
-// use tauri_plugin_autostart::ManagerExt;
 use arboard::ImageData;
 use image::ImageReader;
 use image::RgbaImage;
@@ -16,14 +14,14 @@ use crate::{register_global_shortcut, register_view_image_shortcut};
 //
 // 应用的全局共享状态
 //
+// --- 核心改动：为 AppState 派生 Default 特性 ---
+// 这允许我们在应用构建早期 .manage(AppState::default()) 来提前注入状态，解决竞态条件问题。
+#[derive(Default)]
 pub struct AppState {
     pub settings: Mutex<AppSettings>,
     pub last_screenshot_path: Mutex<Option<PathBuf>>,
     pub fullscreen_capture: Mutex<Option<RgbaImage>>,
     pub is_capturing: AtomicBool,
-
-    // 缓存最后一次处理结果
-    // 用于在用户点击通知的"查看详情"时，能够向结果窗口填充数据
     pub last_ocr_result: Mutex<Option<LastOcrResult>>,
 }
 
@@ -40,15 +38,8 @@ pub struct AppSettings {
     pub shortcut: String,
     pub view_image_shortcut: String,
     pub target_lang: String,
-    // pub autostart: bool, // 已移除：不再管理开机自启动
     pub preserve_line_breaks: bool,
-
-    // 核心操作模式
-    // 取值: "ocr", "ocr_translate", "preview", "copy", "save"
-    // 默认为 "ocr"
     pub primary_action: String,
-
-    // 兼容性保留字段 (可标记为废弃)
     #[serde(default)]
     pub enable_ocr: bool,
     #[serde(default)]
@@ -61,9 +52,7 @@ impl Default for AppSettings {
             shortcut: "F1".to_string(),
             view_image_shortcut: "F3".to_string(),
             target_lang: "zh".to_string(),
-            // autostart: false, // 已移除
             preserve_line_breaks: false,
-            // 默认模式：OCR (静默复制)
             primary_action: "ocr".to_string(),
             enable_ocr: false,
             enable_translation: false,
@@ -106,7 +95,6 @@ pub fn get_settings(state: State<AppState>) -> Result<AppSettings, String> {
 pub async fn set_settings(app: AppHandle, state: State<'_, AppState>, settings: AppSettings) -> Result<(), String> {
     println!("接收到新设置: {:?}", settings);
 
-    // 1. 保存设置到文件
     settings.save(&app.path_resolver()).map_err(|e| format!("保存设置文件失败: {}", e))?;
 
     let old_shortcut;
@@ -120,7 +108,6 @@ pub async fn set_settings(app: AppHandle, state: State<'_, AppState>, settings: 
 
     let mut shortcut_manager = app.global_shortcut_manager();
 
-    // 2. 更新主截图快捷键
     if old_shortcut != settings.shortcut {
         let _ = shortcut_manager.unregister(&old_shortcut);
     }
@@ -128,15 +115,12 @@ pub async fn set_settings(app: AppHandle, state: State<'_, AppState>, settings: 
         return Err(format!("注册主快捷键失败: {}", e));
     }
 
-    // 3. 更新查看图片快捷键
     if old_view_shortcut != settings.view_image_shortcut {
         let _ = shortcut_manager.unregister(&old_view_shortcut);
     }
     if let Err(e) = register_view_image_shortcut(app.clone(), &settings.view_image_shortcut) {
         return Err(format!("注册查看快捷键失败: {}", e));
     }
-
-    // 已移除：开机自启动逻辑处理块
 
     Ok(())
 }
