@@ -86,7 +86,8 @@
         "height": 850,
         "resizable": false,
         "fullscreen": false,
-        "visible": true
+        "visible": true,
+        "theme": "Dark"
       },
       {
         "label": "screenshot",
@@ -120,6 +121,18 @@
         "alwaysOnTop": true,
         "visible": false,
         "skipTaskbar": true
+      },
+      {
+        "label": "loading",
+        "url": "loading.html",
+        "width": 200,
+        "height": 120,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "visible": false,
+        "skipTaskbar": true,
+        "resizable": false
       }
     ]
   }

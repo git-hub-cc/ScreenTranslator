@@ -42,6 +42,8 @@ fn main() {
             // 核心功能
             commands::process_screenshot_area,
             commands::process_image_from_path,
+            // --- 新增: 注册取消截图命令 ---
+            commands::cancel_screenshot,
             // 设置
             settings::get_settings,
             settings::set_settings,
@@ -49,8 +51,8 @@ fn main() {
             settings::copy_image_to_clipboard,
             settings::save_image_to_desktop,
             // 引擎管理
-            commands::check_ocr_status,       // 新增
-            commands::download_ocr,          // 新增
+            commands::check_ocr_status,
+            commands::download_ocr,
             commands::check_translator_status,
             commands::download_translator
         ])
