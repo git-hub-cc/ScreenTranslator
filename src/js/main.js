@@ -1,29 +1,52 @@
 // 导入Tauri API
 const { invoke } = window.__TAURI__.tauri;
-const { appWindow } = window.__TAURI__.window;
 const { listen } = window.__TAURI__.event;
 
 // --- DOM 元素获取 ---
 const shortcutInput = document.getElementById('shortcut-input');
 const viewShortcutInput = document.getElementById('view-shortcut-input');
 const targetLangSelect = document.getElementById('target-lang-select');
+const targetLangContainer = document.getElementById('target-lang-container');
 const autostartCheckbox = document.getElementById('autostart-checkbox');
 const saveBtn = document.getElementById('save-btn');
 const statusMessage = document.getElementById('status-message');
-const ocrCheckbox = document.getElementById('ocr-checkbox');
-const translationCheckbox = document.getElementById('translation-checkbox');
-// --- 新增：获取保留换行复选框的DOM元素 ---
 const lineBreakCheckbox = document.getElementById('line-break-checkbox');
+const ocrSettingsBlock = document.getElementById('ocr-settings-block');
 
+// 获取所有的单选按钮
+const radioInputs = document.getElementsByName('primary-action');
 
 // --- 状态与默认值 ---
 shortcutInput.value = 'F1';
 viewShortcutInput.value = 'F3';
-
 let isRecording = { main: false, view: false };
 let currentSettings = {};
 
 // --- 函数定义 ---
+
+/**
+ * 根据选择的“首要动作”动态更新UI显示状态
+ * (渐进式显示设置项)
+ */
+function updateUIBasedOnAction(actionValue) {
+    console.log("切换首要动作:", actionValue);
+
+    // 1. 控制“识别与翻译设置”区块的显示
+    // 只有在选择 "ocr" 或 "ocr_translate" 时才显示此区块
+    if (actionValue === 'ocr' || actionValue === 'ocr_translate') {
+        ocrSettingsBlock.classList.remove('hidden');
+    } else {
+        ocrSettingsBlock.classList.add('hidden');
+    }
+
+    // 2. 控制“目标语言”选项的显示
+    // 只有在选择 "ocr_translate" 时，才需要选择目标语言
+    if (actionValue === 'ocr_translate') {
+        targetLangContainer.classList.remove('hidden');
+    } else {
+        targetLangContainer.classList.add('hidden');
+    }
+}
 
 /**
  * 从后端加载设置并更新UI
@@ -34,15 +57,24 @@ async function loadSettings() {
         currentSettings = settings;
         console.log("加载到设置:", settings);
 
-        // 更新UI元素的值
+        // 更新快捷键输入框
         shortcutInput.value = settings.shortcut;
         viewShortcutInput.value = settings.view_image_shortcut;
+
+        // 更新下拉菜单和复选框
         targetLangSelect.value = settings.target_lang;
         autostartCheckbox.checked = settings.autostart;
-        ocrCheckbox.checked = settings.enable_ocr;
-        translationCheckbox.checked = settings.enable_translation;
-        // --- 新增：根据从后端获取的设置，更新“保留换行”复选框的状态 ---
         lineBreakCheckbox.checked = settings.preserve_line_breaks;
+
+        // 更新单选按钮组选中状态
+        for (const radio of radioInputs) {
+            if (radio.value === settings.primary_action) {
+                radio.checked = true;
+                // 初始化时触发一次UI更新
+                updateUIBasedOnAction(radio.value);
+                break;
+            }
+        }
 
     } catch (error) {
         console.error("加载设置失败:", error);
@@ -54,7 +86,7 @@ async function loadSettings() {
  * 保存当前UI上的设置到后端
  */
 async function saveSettings() {
-    // ... (快捷键验证逻辑保持不变)
+    // 验证快捷键
     const shortcutValue = shortcutInput.value.trim();
     if (!shortcutValue) {
         showStatusMessage("截图快捷键不能为空！", true);
@@ -68,23 +100,33 @@ async function saveSettings() {
         return;
     }
 
-    // 从UI元素收集最新的设置值
+    // 获取当前选中的首要动作
+    let selectedAction = 'preview'; // 默认安全值
+    for (const radio of radioInputs) {
+        if (radio.checked) {
+            selectedAction = radio.value;
+            break;
+        }
+    }
+
+    // 构造设置对象
     const newSettings = {
         shortcut: shortcutValue,
         view_image_shortcut: viewShortcutValue,
         target_lang: targetLangSelect.value,
         autostart: autostartCheckbox.checked,
-        enable_ocr: ocrCheckbox.checked,
-        enable_translation: translationCheckbox.checked,
-        // --- 新增：将“保留换行”复选框的当前状态也加入到要保存的设置对象中 ---
-        // 键名 `preserve_line_breaks` 与 Rust 结构体中的字段名保持一致
         preserve_line_breaks: lineBreakCheckbox.checked,
+        // 新增：首要动作字段
+        primary_action: selectedAction,
+        // 旧字段保留空值或默认值以维持兼容性（如果需要）
+        enable_ocr: false,
+        enable_translation: false
     };
 
     try {
         await invoke('set_settings', { settings: newSettings });
         showStatusMessage("设置已保存!", false);
-        currentSettings = newSettings; // 更新本地缓存的设置
+        currentSettings = newSettings;
     } catch (error) {
         console.error("保存设置失败:", error);
         showStatusMessage(`保存设置失败! ${error}`, true);
@@ -92,7 +134,7 @@ async function saveSettings() {
 }
 
 /**
- * 在界面上显示状态消息 (无修改)
+ * 在界面上显示状态消息
  */
 function showStatusMessage(msg, isError = false) {
     statusMessage.textContent = msg;
@@ -103,7 +145,7 @@ function showStatusMessage(msg, isError = false) {
 }
 
 /**
- * 格式化并显示快捷键 (无修改)
+ * 格式化并显示快捷键
  */
 function formatShortcut(e) {
     const parts = [];
@@ -121,10 +163,20 @@ function formatShortcut(e) {
 }
 
 
-// --- 事件监听 (无修改) ---
+// --- 事件监听 ---
 
 saveBtn.addEventListener('click', saveSettings);
 
+// 监听单选按钮的变化，实时更新UI
+for (const radio of radioInputs) {
+    radio.addEventListener('change', (e) => {
+        if (e.target.checked) {
+            updateUIBasedOnAction(e.target.value);
+        }
+    });
+}
+
+// 快捷键录制逻辑
 shortcutInput.addEventListener('focus', () => {
     isRecording.main = true;
     shortcutInput.value = '请按下快捷键...';
@@ -167,18 +219,7 @@ viewShortcutInput.addEventListener('keydown', (e) => {
     }
 });
 
-translationCheckbox.addEventListener('change', () => {
-    if (translationCheckbox.checked) {
-        ocrCheckbox.checked = true;
-    }
-});
-ocrCheckbox.addEventListener('change', () => {
-    if (!ocrCheckbox.checked) {
-        translationCheckbox.checked = false;
-    }
-});
-
-// --- 初始化 (无修改) ---
+// --- 初始化 ---
 listen('backend-ready', () => {
     console.log("接收到 'backend-ready' 事件，开始加载设置...");
     loadSettings();

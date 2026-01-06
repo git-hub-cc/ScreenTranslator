@@ -4,22 +4,27 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>截图预览</title>
-    <!-- 复用现有的样式文件 -->
     <link rel="stylesheet" href="css/style.css">
 </head>
-<!-- 移除了 data-tauri-drag-region 属性 -->
 <body>
 
-<!-- 主容器，用于实现高亮边框和布局 -->
+<!-- 主容器 -->
 <div id="viewer-container">
     <!-- 图片展示区域 -->
     <div class="image-area">
-        <!-- 截图图片将显示在这里 -->
         <img id="screenshot-image" src="" alt="Screenshot Preview">
+
+        <!-- 新增：悬浮工具栏 (默认隐藏，鼠标悬停显示) -->
+        <div class="viewer-toolbar">
+            <button id="btn-ocr" title="识别文字 (OCR)">📝 识别</button>
+            <button id="btn-copy" title="复制图片">📋 复制</button>
+            <button id="btn-save" title="另存到桌面">💾 保存</button>
+            <span class="separator">|</span>
+            <button id="btn-close" title="关闭窗口">❌ 关闭</button>
+        </div>
     </div>
 </div>
 
-<!-- 引入该页面专属的JS逻辑文件 -->
 <script type="module" src="js/image_viewer.js"></script>
 </body>
 </html>

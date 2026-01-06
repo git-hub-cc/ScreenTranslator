@@ -2,11 +2,13 @@
 :root {
     --bg-color: #282c34;
     --bg-color-transparent: rgba(40, 44, 52, 0.95);
+    --bg-color-lighter: #3a3f4b;
     --text-color: #abb2bf;
     --text-color-bright: #e6e6e6;
     --text-color-dim: #888;
     --border-color: rgba(255, 255, 255, 0.1);
     --accent-color: #61afef;
+    --accent-hover: #529bda;
     --error-color: #ff6b6b;
     --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
@@ -30,13 +32,16 @@ body {
     background-color: var(--bg-color);
     display: flex;
     flex-direction: column;
-    gap: 1.5rem; /* 设置项之间的间距 */
+    gap: 1.2rem;
+    overflow-y: auto; /* 允许设置页面垂直滚动 */
 }
 
 .settings-container h1 {
     color: var(--text-color-bright);
     margin-top: 0;
+    margin-bottom: 0.5rem;
     text-align: center;
+    font-size: 1.5rem;
 }
 
 .setting-item {
@@ -47,13 +52,85 @@ body {
 
 .setting-item label {
     font-weight: bold;
+    color: var(--text-color-bright);
+}
+
+/* --- 新增：单选按钮组样式 --- */
+.radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+    background-color: var(--bg-color-lighter);
+    padding: 1rem;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+.radio-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.8rem;
+}
+
+.radio-option input[type="radio"] {
+    margin-top: 0.3rem;
+    cursor: pointer;
+}
+
+.radio-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.radio-label label {
+    font-weight: normal;
+    font-size: 0.95rem;
+    cursor: pointer;
+}
+
+.radio-label small {
+    font-size: 0.8rem;
+    color: var(--text-color-dim);
+    line-height: 1.4;
+}
+
+.radio-label small b {
+    color: var(--accent-color);
+}
+
+/* --- 新增：设置分组框样式 (用于OCR详细设置) --- */
+.setting-group-box {
+    border: 1px dashed var(--border-color);
+    padding: 1rem;
+    border-radius: 6px;
+    position: relative;
+    margin-top: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.setting-header {
+    position: absolute;
+    top: -0.8rem;
+    left: 1rem;
+    background-color: var(--bg-color);
+    padding: 0 0.5rem;
+    font-size: 0.85rem;
+    color: var(--accent-color);
+    font-weight: bold;
+}
+
+/* 隐藏不可见元素 */
+.hidden {
+    display: none !important;
 }
 
 .setting-item input[type="text"],
-.setting-item input[type="password"],
 .setting-item select {
     padding: 0.6rem;
-    background-color: #3a3f4b;
+    background-color: var(--bg-color-lighter);
     border: 1px solid var(--border-color);
     border-radius: 4px;
     color: var(--text-color-bright);
@@ -61,30 +138,14 @@ body {
 }
 
 .setting-item input[type="text"]:focus,
-.setting-item input[type="password"]:focus,
 .setting-item select:focus {
     outline: none;
     border-color: var(--accent-color);
     box-shadow: 0 0 5px rgba(97, 175, 239, 0.5);
 }
 
-#shortcut-input {
+#shortcut-input, #view-shortcut-input {
     cursor: pointer;
-}
-#shortcut-input:focus {
-    cursor: text;
-}
-
-.setting-item small {
-    font-size: 0.8rem;
-    color: var(--text-color-dim);
-}
-.setting-item small a {
-    color: var(--accent-color);
-    text-decoration: none;
-}
-.setting-item small a:hover {
-    text-decoration: underline;
 }
 
 .checkbox-item {
@@ -94,12 +155,13 @@ body {
 }
 
 .actions {
-    margin-top: auto; /* 将按钮推到底部 */
+    margin-top: auto;
     text-align: center;
+    padding-top: 1rem;
 }
 
 #save-btn {
-    padding: 0.7rem 1.5rem;
+    padding: 0.7rem 2rem;
     background-color: var(--accent-color);
     color: #fff;
     border: none;
@@ -110,16 +172,16 @@ body {
 }
 
 #save-btn:hover {
-    background-color: #529bda;
+    background-color: var(--accent-hover);
 }
 
 #status-message {
     margin-top: 1rem;
-    height: 1rem; /* 预留空间，防止布局抖动 */
+    min-height: 1.2rem;
     font-size: 0.9rem;
 }
 
-/* --- 截图窗口 (screenshot.html) 样式 --- */
+/* --- 截图窗口 (screenshot.html) --- */
 #canvas {
     position: absolute;
     top: 0;
@@ -129,7 +191,7 @@ body {
     cursor: crosshair;
 }
 
-/* --- 结果窗口 (results.html) 样式 --- */
+/* --- 结果窗口 (results.html) --- */
 body[data-tauri-drag-region] {
     cursor: grab;
     user-select: none;
@@ -141,7 +203,6 @@ body[data-tauri-drag-region] {
     height: 100vh;
     background-color: var(--bg-color-transparent);
     border: 1px solid var(--border-color);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     display: flex;
     flex-direction: column;
 }
@@ -150,7 +211,7 @@ body[data-tauri-drag-region] {
     padding: 4px 8px;
     flex-shrink: 0;
     display: flex;
-    justify-content: flex-end; /* 按钮靠右 */
+    justify-content: flex-end;
     border-bottom: 1px solid var(--border-color);
 }
 
@@ -162,7 +223,7 @@ body[data-tauri-drag-region] {
     padding: 4px 6px;
     cursor: pointer;
     border-radius: 4px;
-    transition: background-color 0.15s, transform 0.1s; /* 添加平滑过渡效果 */
+    transition: background-color 0.15s, transform 0.1s;
 }
 
 .toolbar .actions button:hover {
@@ -174,12 +235,10 @@ body[data-tauri-drag-region] {
     color: #fff;
 }
 
-/* 新增：用于点击反馈的专用类 */
 .toolbar .actions button.clicked-feedback {
-    background-color: var(--accent-color); /* 短暂变为高亮颜色 */
-    transform: scale(0.92); /* 轻微缩小，模拟按下效果 */
+    background-color: var(--accent-color);
+    transform: scale(0.92);
 }
-
 
 #result-container hr {
     width: 100%;
@@ -194,7 +253,7 @@ body[data-tauri-drag-region] {
     padding: 8px 12px;
     scrollbar-width: thin;
     scrollbar-color: #555 #333;
-    min-height: 0; /* flex布局中重要属性，防止内容溢出 */
+    min-height: 0;
 }
 
 .text-area pre {
@@ -207,49 +266,84 @@ body[data-tauri-drag-region] {
     line-height: 1.5;
 }
 
-.original pre {
-    color: var(--text-color-dim);
-    font-size: 13px;
-}
+.original pre { color: var(--text-color-dim); font-size: 13px; }
+.translated pre { color: var(--text-color-bright); font-size: 15px; }
 
-.translated pre {
-    color: var(--text-color-bright);
-    font-size: 15px;
-}
-
-.text-area::-webkit-scrollbar { width: 6px; }
-.text-area::-webkit-scrollbar-track { background: #333; border-radius: 3px; }
-.text-area::-webkit-scrollbar-thumb { background-color: #555; border-radius: 3px; }
-
-
-/* --- 图片预览窗口 (image_viewer.html) 样式 --- */
-
+/* --- 图片预览窗口 (image_viewer.html) --- */
 #viewer-container {
     box-sizing: border-box;
     width: 100vw;
     height: 100vh;
-    padding: 0; /* --- 修改: 移除内边距 --- */
+    padding: 0;
     display: flex;
     flex-direction: column;
-    /* --- 修改: 实现 2px 高亮边框 --- */
     box-shadow: 0 0 0 2px var(--accent-color);
     background-color: var(--bg-color-transparent);
+    position: relative; /* 为悬浮工具栏定位 */
 }
 
-/* --- 已移除: #viewer-container .toolbar 样式 --- */
-
 .image-area {
-    flex: 1; /* 占据所有剩余空间 */
+    flex: 1;
     display: flex;
-    justify-content: center; /* 水平居中图片 */
-    align-items: center; /* 垂直居中图片 */
-    overflow: hidden; /* 防止图片溢出容器 */
-    min-height: 0; /* 重要的flex布局修复 */
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    min-height: 0;
+    position: relative;
 }
 
 #screenshot-image {
-    /* 确保图片能自适应容器大小，且不被拉伸变形 */
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
+}
+
+/* --- 新增：悬浮工具栏样式 --- */
+.viewer-toolbar {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(40, 44, 52, 0.9);
+    backdrop-filter: blur(4px);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    opacity: 0; /* 默认隐藏 */
+    transition: opacity 0.2s ease-in-out;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    z-index: 100;
+}
+
+/* 鼠标悬停在图片区域或工具栏上时显示 */
+.image-area:hover .viewer-toolbar,
+.viewer-toolbar:hover {
+    opacity: 1;
+}
+
+.viewer-toolbar button {
+    background: none;
+    border: none;
+    color: var(--text-color-bright);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: background-color 0.2s;
+}
+
+.viewer-toolbar button:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+    color: #fff;
+}
+
+.viewer-toolbar .separator {
+    color: var(--border-color);
+    margin: 0 4px;
 }
