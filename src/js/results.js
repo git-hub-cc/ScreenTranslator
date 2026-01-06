@@ -73,8 +73,10 @@ function speakText() {
  * 这是收到的第一个事件，用于立即更新原文和图片信息。
  */
 listen('ocr_result', (event) => {
+    // --- 日志 ---
+    console.log("[RESULTS.JS] 接收到 'ocr_result' 事件, payload:", event.payload);
+
     const payload = event.payload;
-    console.log("接收到 OCR 结果:", payload);
 
     // 重置UI状态
     translatedTextEl.style.color = 'var(--text-color-bright)';
@@ -115,8 +117,10 @@ listen('ocr_result', (event) => {
  * 这个事件在 OCR 成功后才会收到，用于更新译文区域。
  */
 listen('translation_update', (event) => {
+    // --- 日志 ---
+    console.log("[RESULTS.JS] 接收到 'translation_update' 事件, payload:", event.payload);
+
     const payload = event.payload;
-    console.log("接收到翻译更新:", payload);
 
     // 根据翻译结果更新UI
     if (payload.error_message) {
@@ -190,3 +194,5 @@ pinBtn.classList.add('active');
 pinBtn.title = "取消置顶";
 copyImageBtn.style.display = 'none';
 saveImageBtn.style.display = 'none';
+
+console.log("[RESULTS.JS] 结果窗口初始化完成，事件监听器已设置。");

@@ -31,14 +31,13 @@ serde_json = "1.0"
 # Tokio: 异步运行时，用于处理耗时操作
 tokio = { version = "1", features = ["full"] }
 
-# Reqwest: 一个强大易用的异步HTTP客户端 (!!! 已不再需要用于翻译，可以移除 !!!)
-# reqwest = { version = "0.12", features = ["json"] } # <- 注释或删除此行
+# xcap: 用于现代化的屏幕捕获
+xcap = " 0.8.1"
 
-# Screenshots: 用于截取屏幕
-screenshots = "0.6"
-
-# Image: 用于处理图像数据，例如保存为文件
-image = "0.24"
+# image: 图像处理库
+image = "0.25"
+# --- 新增依赖：直接引入 png 库以访问其高级编码选项，用于性能优化 ---
+png = "0.17"
 
 # Arboard: 用于跨平台剪切板操作
 arboard = "3"
@@ -50,7 +49,7 @@ async-trait = "0.1.89"
 # Base64: 用于将图片数据编码，以便安全地通过事件发送给前端
 base64 = "0.22"
 
-# --- 新增依赖：用于处理 GBK <-> UTF-8 编码转换 ---
+# encoding_rs: 用于处理 GBK <-> UTF-8 编码转换
 encoding_rs = "0.8"
 
 
