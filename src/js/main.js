@@ -7,9 +7,6 @@ const shortcutInput = document.getElementById('shortcut-input');
 const viewShortcutInput = document.getElementById('view-shortcut-input');
 const targetLangSelect = document.getElementById('target-lang-select');
 const targetLangContainer = document.getElementById('target-lang-container');
-const autostartCheckbox = document.getElementById('autostart-checkbox');
-const saveBtn = document.getElementById('save-btn');
-const statusMessage = document.getElementById('status-message');
 const lineBreakCheckbox = document.getElementById('line-break-checkbox');
 const ocrSettingsBlock = document.getElementById('ocr-settings-block');
 
@@ -63,7 +60,6 @@ async function loadSettings() {
 
         // 更新下拉菜单和复选框
         targetLangSelect.value = settings.target_lang;
-        autostartCheckbox.checked = settings.autostart;
         lineBreakCheckbox.checked = settings.preserve_line_breaks;
 
         // 更新单选按钮组选中状态
@@ -78,30 +74,30 @@ async function loadSettings() {
 
     } catch (error) {
         console.error("加载设置失败:", error);
-        showStatusMessage("加载设置失败!", true);
     }
 }
 
 /**
  * 保存当前UI上的设置到后端
+ * (此函数现在直接由控件事件触发)
  */
 async function saveSettings() {
     // 验证快捷键
     const shortcutValue = shortcutInput.value.trim();
     if (!shortcutValue) {
-        showStatusMessage("截图快捷键不能为空！", true);
-        shortcutInput.focus();
+        console.warn("截图快捷键不能为空！恢复旧值。");
+        shortcutInput.value = currentSettings.shortcut || 'F1';
         return;
     }
     const viewShortcutValue = viewShortcutInput.value.trim();
     if (!viewShortcutValue) {
-        showStatusMessage("查看截图快捷键不能为空！", true);
-        viewShortcutInput.focus();
+        console.warn("查看截图快捷键不能为空！恢复旧值。");
+        viewShortcutInput.value = currentSettings.view_image_shortcut || 'F3';
         return;
     }
 
     // 获取当前选中的首要动作
-    let selectedAction = 'preview'; // 默认安全值
+    let selectedAction = 'ocr'; // 默认安全值
     for (const radio of radioInputs) {
         if (radio.checked) {
             selectedAction = radio.value;
@@ -114,34 +110,23 @@ async function saveSettings() {
         shortcut: shortcutValue,
         view_image_shortcut: viewShortcutValue,
         target_lang: targetLangSelect.value,
-        autostart: autostartCheckbox.checked,
+        // autostart 已移除
         preserve_line_breaks: lineBreakCheckbox.checked,
-        // 新增：首要动作字段
+        // 首要动作字段
         primary_action: selectedAction,
-        // 旧字段保留空值或默认值以维持兼容性（如果需要）
+        // 旧字段保留默认值
         enable_ocr: false,
         enable_translation: false
     };
 
     try {
         await invoke('set_settings', { settings: newSettings });
-        showStatusMessage("设置已保存!", false);
+        console.log("设置已保存:", newSettings);
         currentSettings = newSettings;
     } catch (error) {
         console.error("保存设置失败:", error);
-        showStatusMessage(`保存设置失败! ${error}`, true);
+        // 可选：在这里弹出系统通知告知用户保存失败
     }
-}
-
-/**
- * 在界面上显示状态消息
- */
-function showStatusMessage(msg, isError = false) {
-    statusMessage.textContent = msg;
-    statusMessage.style.color = isError ? 'var(--error-color)' : 'var(--accent-color)';
-    setTimeout(() => {
-        statusMessage.textContent = '';
-    }, 4000);
 }
 
 /**
@@ -163,20 +148,25 @@ function formatShortcut(e) {
 }
 
 
-// --- 事件监听 ---
+// --- 事件监听 (即时保存逻辑) ---
 
-saveBtn.addEventListener('click', saveSettings);
-
-// 监听单选按钮的变化，实时更新UI
+// 1. 监听单选按钮的变化，实时更新UI并保存
 for (const radio of radioInputs) {
     radio.addEventListener('change', (e) => {
         if (e.target.checked) {
             updateUIBasedOnAction(e.target.value);
+            saveSettings(); // 触发保存
         }
     });
 }
 
-// 快捷键录制逻辑
+// 2. 监听复选框和下拉菜单的变化，触发保存
+targetLangSelect.addEventListener('change', saveSettings);
+lineBreakCheckbox.addEventListener('change', saveSettings);
+
+// 3. 快捷键录制逻辑
+// (只有在输入框失去焦点 'blur' 时才触发保存，避免输入过程中频繁保存)
+
 shortcutInput.addEventListener('focus', () => {
     isRecording.main = true;
     shortcutInput.value = '请按下快捷键...';
@@ -186,6 +176,7 @@ shortcutInput.addEventListener('blur', () => {
     if (shortcutInput.value === '请按下快捷键...') {
         shortcutInput.value = currentSettings.shortcut || 'F1';
     }
+    saveSettings(); // 触发保存
 });
 shortcutInput.addEventListener('keydown', (e) => {
     if (isRecording.main) {
@@ -207,6 +198,7 @@ viewShortcutInput.addEventListener('blur', () => {
     if (viewShortcutInput.value === '请按下快捷键...') {
         viewShortcutInput.value = currentSettings.view_image_shortcut || 'F3';
     }
+    saveSettings(); // 触发保存
 });
 viewShortcutInput.addEventListener('keydown', (e) => {
     if (isRecording.view) {
