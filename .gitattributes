@@ -1,2 +1,6 @@
+# 自动处理所有文本文件的换行符
+*.toml eol=lf
+
+# 您已有的LFS规则
 *.exe filter=lfs diff=lfs merge=lfs -text
 *.bin filter=lfs diff=lfs merge=lfs -text
