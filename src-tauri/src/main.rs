@@ -219,6 +219,7 @@ pub fn register_global_shortcut(app_handle: AppHandle, shortcut: &str) -> Result
 }
 
 /// 注册查看上一次截图/结果的全局快捷键
+/// --- 核心修改：支持循环查看历史截图 ---
 pub fn register_view_image_shortcut(app_handle: AppHandle, shortcut: &str) -> Result<(), tauri::Error> {
     let mut manager = app_handle.global_shortcut_manager();
     if manager.is_registered(shortcut)? { let _ = manager.unregister(shortcut); }
@@ -227,11 +228,32 @@ pub fn register_view_image_shortcut(app_handle: AppHandle, shortcut: &str) -> Re
         let handle_for_thread = app_handle.clone();
         // 在新线程中处理文件读取，避免阻塞
         std::thread::spawn(move || {
-            let path_to_show: Option<std::path::PathBuf> = {
-                let state: State<AppState> = handle_for_thread.state();
-                let lock = state.last_screenshot_path.lock().unwrap();
-                lock.clone()
+            let state: State<AppState> = handle_for_thread.state();
+
+            // --- 修改开始：历史记录循环逻辑 ---
+            let path_to_show = {
+                let history = state.screenshot_history.lock().unwrap();
+                let mut index = state.history_index.lock().unwrap();
+
+                if history.is_empty() {
+                    println!("[VIEWER] 历史记录为空，无法查看。");
+                    None
+                } else {
+                    // 确保索引在安全范围内 (防止列表被清空后索引越界)
+                    if *index >= history.len() {
+                        *index = 0;
+                    }
+
+                    let path = history[*index].clone();
+                    println!("[VIEWER] 正在查看历史记录 [{}/{}]: {:?}", *index + 1, history.len(), path);
+
+                    // 更新索引以指向下一张图片 (循环)
+                    *index = (*index + 1) % history.len();
+
+                    Some(path)
+                }
             };
+            // --- 修改结束 ---
 
             if let Some(path) = path_to_show {
                 if let Ok(bytes) = fs::read(&path) {
@@ -252,6 +274,8 @@ pub fn register_view_image_shortcut(app_handle: AppHandle, shortcut: &str) -> Re
                                 .build().unwrap().emit("display-image", payload);
                         }
                     }).unwrap();
+                } else {
+                    eprintln!("[VIEWER] 错误：无法读取历史图片文件 {:?}", path);
                 }
             }
         });

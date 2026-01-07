@@ -1,8 +1,8 @@
+// --- 文件: src-tauri/src/commands.rs ---
+
 use serde::{Serialize};
 use tauri::{Manager, State};
 use std::process::Command as StdCommand;
-// --- 移除 GBK 依赖 ---
-// use encoding_rs::GBK;
 use std::fs;
 use std::io::Write;
 use base64::{Engine as _, engine::general_purpose};
@@ -29,7 +29,7 @@ struct DownloadProgressPayload {
 // OCR 引擎 (RapidOCR)
 const OCR_URL: &str = "https://github.com/hiroi-sora/RapidOCR-json/releases/download/v0.2.0/RapidOCR-json_v0.2.0.7z";
 const OCR_EXE_NAME: &str = "RapidOCR-json.exe";
-// --- 新增：定义解压后的子目录名 ---
+// 定义解压后的子目录名
 const OCR_DIR_NAME: &str = "RapidOCR-json_v0.2.0";
 
 // 翻译引擎 (LocalTranslator)
@@ -43,7 +43,7 @@ const TRANSLATOR_EXE_NAME: &str = "translate_engine.exe";
 pub async fn check_ocr_status(app: tauri::AppHandle) -> Result<bool, String> {
     let local_data_dir = app.path_resolver().app_local_data_dir()
         .ok_or("无法获取本地数据目录")?;
-    // --- 修正：在路径中加入子目录 ---
+    // 修正：在路径中加入子目录
     let exe_path = local_data_dir.join(OCR_DIR_NAME).join(OCR_EXE_NAME);
     let exists = exe_path.exists();
     println!("[STATUS] 检查 OCR 状态: 路径='{:?}', 是否存在={}", exe_path, exists);
@@ -194,12 +194,10 @@ pub async fn download_translator(app: tauri::AppHandle) -> Result<(), String> {
 
 // --- 核心功能命令 ---
 
-// --- 新增：处理用户取消截图的命令 ---
-/// 当前端用户通过 Esc 或右键取消截图时调用此命令，以释放截图状态锁。
+// 处理用户取消截图的命令
 #[tauri::command]
 pub fn cancel_screenshot(state: State<'_, AppState>) {
     println!("[COMMANDS] 用户取消截图，释放锁。");
-    // 将 is_capturing 状态重置为 false，允许下一次快捷键触发
     state.is_capturing.store(false, Ordering::SeqCst);
 }
 
@@ -211,51 +209,68 @@ pub async fn process_screenshot_area(
 ) -> Result<(), String> {
     println!("[COMMANDS] 处理截图区域: x={}, y={}, w={}, h={}", x, y, width, height);
 
-    // --- 新增: 显示加载窗口 ---
     if let Some(loading_window) = app.get_window("loading") {
         let _ = loading_window.center();
         let _ = loading_window.show();
     }
 
-    // 从状态中取出缓存的全屏截图
     let fullscreen_image = {
         let mut capture_cache = state.fullscreen_capture.lock().unwrap();
         capture_cache.take().ok_or("错误：在 AppState 中未找到缓存的全屏截图。")?
     };
 
-    // 裁剪出用户选择的区域
     let cropped_image_buffer = image::imageops::crop_imm(
         &fullscreen_image, x as u32, y as u32, width as u32, height as u32,
     ).to_image();
 
-    // 克隆设置和 AppHandle 以在异步任务中使用
     let settings = state.settings.lock().unwrap().clone();
     let app_for_task = app.clone();
 
-    // 将耗时操作放入异步任务中，避免阻塞主线程
     tokio::spawn(async move {
-        // 创建临时目录用于保存截图
         let temp_dir = app_for_task.path_resolver().app_cache_dir().unwrap().join("tmp");
         let _ = tokio::fs::create_dir_all(&temp_dir).await;
-        let image_path = temp_dir.join("screenshot.png");
 
-        // 保存截图到文件
+        // --- 核心修改：生成唯一文件名，避免覆盖，支持历史记录 ---
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        let image_filename = format!("screenshot-{}.png", timestamp);
+        let image_path = temp_dir.join(image_filename);
+
         if let Err(e) = cropped_image_buffer.save(&image_path) {
             eprintln!("[COMMANDS] 保存截图失败: {}", e);
-            // --- 修改: 确保在出错时也隐藏加载窗口并释放锁 ---
             hide_loading_and_release_lock(&app_for_task);
             return;
         }
 
         let image_path_str = image_path.to_str().unwrap().to_string();
 
-        // 更新状态，保存最新截图的路径
+        // --- 更新状态和历史记录 ---
         {
             let state: State<AppState> = app_for_task.state();
+
+            // 1. 更新最后一张截图的路径
             *state.last_screenshot_path.lock().unwrap() = Some(image_path.clone());
+
+            // 2. 将新截图添加到历史记录列表的头部
+            let mut history = state.screenshot_history.lock().unwrap();
+            history.insert(0, image_path.clone());
+
+            // 3. 限制历史记录数量（例如保留最近 20 张）
+            if history.len() > 20 {
+                if let Some(old_path) = history.pop() {
+                    // 删除最旧的文件以节省空间
+                    let _ = std::fs::remove_file(old_path);
+                }
+            }
+
+            // 4. 重置查看历史的索引，确保下一次按 F3 显示最新的图片
+            *state.history_index.lock().unwrap() = 0;
+
+            println!("[COMMANDS] 截图已保存至历史记录，当前历史数: {}", history.len());
         }
 
-        // 根据用户设置执行相应操作
         match settings.primary_action.as_str() {
             "ocr" => handle_ocr_mode(&app_for_task, &image_path_str, &settings, false).await,
             "ocr_translate" => handle_ocr_mode(&app_for_task, &image_path_str, &settings, true).await,
@@ -264,7 +279,6 @@ pub async fn process_screenshot_area(
             "preview" | _ => handle_preview_mode(&app_for_task, &image_path, image_path_str).await,
         }
 
-        // --- 修改: 任务完成后隐藏加载窗口并释放锁 ---
         hide_loading_and_release_lock(&app_for_task);
     });
 
@@ -280,19 +294,33 @@ pub async fn process_image_from_path(
 ) -> Result<(), String> {
     println!("[COMMANDS] 手动处理图片: {}, 动作: {}", path, action);
     let settings = state.settings.lock().unwrap().clone();
-    if action == "ocr" {
-        handle_ocr_mode(&app, &path, &settings, false).await;
-        let app_handle = app.clone();
-        app.run_on_main_thread(move || {
-            crate::show_results_window_with_cache(&app_handle);
-        }).unwrap();
-    }
+
+    // --- 核心修改：扩展此函数以处理 'ocr' 和 'ocr_translate' 两种动作 ---
+    let do_translate = match action.as_str() {
+        "ocr_translate" => true,
+        "ocr" => false,
+        // 对于未知的 action，打印日志并直接返回，避免执行
+        _ => {
+            println!("[COMMANDS] 未知动作: '{}', 操作已取消。", action);
+            return Ok(());
+        }
+    };
+
+    // 执行 OCR (及可能的翻译)
+    handle_ocr_mode(&app, &path, &settings, do_translate).await;
+
+    // 异步任务完成后，回到主线程显示结果窗口
+    let app_handle_for_main_thread = app.clone();
+    app.run_on_main_thread(move || {
+        crate::show_results_window_with_cache(&app_handle_for_main_thread);
+    }).map_err(|e| format!("无法在主线程上运行任务: {}", e))?;
+
     Ok(())
 }
 
 // --- 辅助函数 ---
 
-/// --- 新增: 隐藏加载窗口并释放截图锁的辅助函数 ---
+// 隐藏加载窗口并释放截图锁的辅助函数
 fn hide_loading_and_release_lock(app: &tauri::AppHandle) {
     if let Some(loading_window) = app.get_window("loading") {
         let _ = loading_window.hide();
@@ -391,7 +419,6 @@ fn perform_ocr(app: &tauri::AppHandle, image_path_str: &str, settings: &AppSetti
     println!("[OCR] 开始执行 OCR 流程...");
     println!("[OCR] 待识别图片路径: {}", image_path_str);
 
-    // --- 修正：在路径中加入子目录 ---
     let ocr_exe_path = app.path_resolver().app_local_data_dir()
         .ok_or_else(|| "无法获取本地数据目录".to_string())?
         .join(OCR_DIR_NAME)
@@ -426,7 +453,6 @@ fn perform_ocr(app: &tauri::AppHandle, image_path_str: &str, settings: &AppSetti
     println!("[OCR] 进程执行完毕. Status: {:?}", ocr_output.status);
 
     if !ocr_output.status.success() {
-        // --- FIX: Decode stderr as UTF-8 ---
         let stderr = String::from_utf8_lossy(&ocr_output.stderr).into_owned();
         let err_msg = format!("OCR进程返回错误: {}", stderr);
         println!("[OCR] 错误: {}", err_msg);
@@ -434,7 +460,6 @@ fn perform_ocr(app: &tauri::AppHandle, image_path_str: &str, settings: &AppSetti
         return Err(err_msg);
     }
 
-    // --- FIX: Decode stdout as UTF-8 ---
     let stdout = String::from_utf8_lossy(&ocr_output.stdout).into_owned();
     println!("[OCR] Stdout (decoded): '{}'", stdout);
     println!("[OCR] Stdout (raw bytes): {:?}", &ocr_output.stdout);

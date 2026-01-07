@@ -118,12 +118,14 @@ function updateTranslatorUI() {
  */
 function updateUIBasedOnAction(actionValue) {
     const requiresOcr = ['ocr', 'ocr_translate', 'preview'].includes(actionValue);
-    const requiresTranslation = actionValue === 'ocr_translate';
 
-    // 1. 如果动作需要 OCR，则显示“识别与翻译设置”区块
+    // --- 核心修改：将 'preview' 模式也加入判断，因为用户在预览后可能需要手动翻译。
+    const requiresTranslation = ['ocr_translate', 'preview'].includes(actionValue);
+
+    // 1. 如果动作需要 OCR (或预览)，则显示“识别与翻译设置”区块
     ocrSettingsBlock.classList.toggle('hidden', !requiresOcr);
 
-    // 2. 如果动作需要翻译，则显示“目标语言”下拉框
+    // 2. 如果动作需要翻译 (或预览)，则显示“目标语言”下拉框
     targetLangContainer.classList.toggle('hidden', !requiresTranslation);
 
     // 3. 智能提示：如果用户选择了需要引擎的功能但未安装，则高亮下载按钮

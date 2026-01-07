@@ -14,15 +14,19 @@ use crate::{register_global_shortcut, register_view_image_shortcut};
 //
 // 应用的全局共享状态
 //
-// --- 核心改动：为 AppState 派生 Default 特性 ---
-// 这允许我们在应用构建早期 .manage(AppState::default()) 来提前注入状态，解决竞态条件问题。
 #[derive(Default)]
 pub struct AppState {
     pub settings: Mutex<AppSettings>,
+    // 兼容旧逻辑，始终指向最新的一张截图
     pub last_screenshot_path: Mutex<Option<PathBuf>>,
     pub fullscreen_capture: Mutex<Option<RgbaImage>>,
     pub is_capturing: AtomicBool,
     pub last_ocr_result: Mutex<Option<LastOcrResult>>,
+
+    // --- 新增：截图历史记录列表 (存储路径) ---
+    pub screenshot_history: Mutex<Vec<PathBuf>>,
+    // --- 新增：当前查看的历史记录索引 (用于F3循环) ---
+    pub history_index: Mutex<usize>,
 }
 
 // 缓存的结果结构
