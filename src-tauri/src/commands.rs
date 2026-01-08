@@ -9,6 +9,7 @@ use base64::{Engine as _, engine::general_purpose};
 use std::sync::atomic::Ordering;
 use tauri::api::notification::Notification;
 use futures_util::StreamExt;
+use std::path::{Path, PathBuf};
 
 use crate::ImageViewerPayload;
 use crate::settings::{AppSettings, AppState, LastOcrResult, copy_image_to_clipboard, save_image_to_desktop};
@@ -230,7 +231,6 @@ pub async fn process_screenshot_area(
         let temp_dir = app_for_task.path_resolver().app_cache_dir().unwrap().join("tmp");
         let _ = tokio::fs::create_dir_all(&temp_dir).await;
 
-        // --- 核心修改：生成唯一文件名，避免覆盖，支持历史记录 ---
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -246,30 +246,7 @@ pub async fn process_screenshot_area(
 
         let image_path_str = image_path.to_str().unwrap().to_string();
 
-        // --- 更新状态和历史记录 ---
-        {
-            let state: State<AppState> = app_for_task.state();
-
-            // 1. 更新最后一张截图的路径
-            *state.last_screenshot_path.lock().unwrap() = Some(image_path.clone());
-
-            // 2. 将新截图添加到历史记录列表的头部
-            let mut history = state.screenshot_history.lock().unwrap();
-            history.insert(0, image_path.clone());
-
-            // 3. 限制历史记录数量（例如保留最近 20 张）
-            if history.len() > 20 {
-                if let Some(old_path) = history.pop() {
-                    // 删除最旧的文件以节省空间
-                    let _ = std::fs::remove_file(old_path);
-                }
-            }
-
-            // 4. 重置查看历史的索引，确保下一次按 F3 显示最新的图片
-            *state.history_index.lock().unwrap() = 0;
-
-            println!("[COMMANDS] 截图已保存至历史记录，当前历史数: {}", history.len());
-        }
+        add_image_to_history(&app_for_task.state(), image_path.clone());
 
         match settings.primary_action.as_str() {
             "ocr" => handle_ocr_mode(&app_for_task, &image_path_str, &settings, false).await,
@@ -295,21 +272,17 @@ pub async fn process_image_from_path(
     println!("[COMMANDS] 手动处理图片: {}, 动作: {}", path, action);
     let settings = state.settings.lock().unwrap().clone();
 
-    // --- 核心修改：扩展此函数以处理 'ocr' 和 'ocr_translate' 两种动作 ---
     let do_translate = match action.as_str() {
         "ocr_translate" => true,
         "ocr" => false,
-        // 对于未知的 action，打印日志并直接返回，避免执行
         _ => {
             println!("[COMMANDS] 未知动作: '{}', 操作已取消。", action);
             return Ok(());
         }
     };
 
-    // 执行 OCR (及可能的翻译)
     handle_ocr_mode(&app, &path, &settings, do_translate).await;
 
-    // 异步任务完成后，回到主线程显示结果窗口
     let app_handle_for_main_thread = app.clone();
     app.run_on_main_thread(move || {
         crate::show_results_window_with_cache(&app_handle_for_main_thread);
@@ -319,6 +292,102 @@ pub async fn process_image_from_path(
 }
 
 // --- 辅助函数 ---
+
+/// [核心修改] 处理通过文件关联打开的外部图片
+///
+/// 此函数将文件I/O操作（复制、读取）放到后台线程中，避免阻塞UI。
+/// 完成后，在主线程上显示预览窗口。
+///
+/// 设计说明:
+/// 虽然用户在需求中提到了`results.html`，但`image_viewer.html`更适合纯图片预览，
+/// 并且它内置了OCR、复制、保存等按钮，完全符合“将图片作为截图内容”的需求，提供了更好的用户体验。
+pub fn handle_external_image_open(app: &tauri::AppHandle, external_path: &Path) {
+    println!("[COMMANDS] 检测到通过文件关联打开图片: {:?}", external_path);
+
+    // 克隆需要在新线程中使用的数据
+    let app_handle = app.clone();
+    let path_buf = external_path.to_path_buf();
+
+    // 启动一个后台线程来处理耗时的文件操作
+    std::thread::spawn(move || {
+        // 1. 获取应用的缓存目录
+        let cache_dir = match app_handle.path_resolver().app_cache_dir() {
+            Some(dir) => dir.join("tmp"),
+            None => {
+                eprintln!("[THREAD] 错误: 无法获取应用缓存目录");
+                return;
+            }
+        };
+        // 确保目录存在
+        if let Err(e) = fs::create_dir_all(&cache_dir) {
+            eprintln!("[THREAD] 错误: 创建缓存目录失败: {}", e);
+            return;
+        }
+
+        // 2. 为复制的文件生成一个唯一的新名称
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let original_filename = path_buf.file_stem().unwrap_or_default().to_string_lossy();
+        let extension = path_buf.extension().unwrap_or_default().to_string_lossy();
+        let new_filename = format!("external-{}-{}.{}", original_filename, timestamp, extension);
+        let dest_path = cache_dir.join(new_filename);
+
+        // 3. 将外部图片复制到缓存目录
+        if let Err(e) = fs::copy(&path_buf, &dest_path) {
+            eprintln!("[THREAD] 错误: 复制外部图片失败: {}", e);
+            send_notification(&app_handle, "❌ 打开失败", &format!("无法复制文件: {}", e));
+            return;
+        }
+        println!("[THREAD] 外部图片已成功复制到: {:?}", dest_path);
+
+        // 4. 将新路径添加到历史记录中
+        add_image_to_history(&app_handle.state(), dest_path.clone());
+
+        // 5. 读取、编码并准备显示图片
+        match fs::read(&dest_path) {
+            Ok(bytes) => {
+                let b64 = general_purpose::STANDARD.encode(&bytes);
+                let dest_path_str = dest_path.to_str().unwrap_or_default().to_string();
+                let payload = ImageViewerPayload {
+                    image_data_url: format!("data:image/png;base64,{}", b64),
+                    image_path: dest_path_str,
+                };
+                // 文件处理完成，现在通知主线程显示窗口
+                create_and_show_image_viewer_window(&app_handle, payload);
+            },
+            Err(e) => {
+                eprintln!("[THREAD] 错误: 无法读取复制后的图片文件: {}", e);
+                send_notification(&app_handle, "❌ 打开失败", "无法读取图片文件以供预览。");
+            }
+        }
+    });
+}
+
+
+/// 将图片路径添加到历史记录的辅助函数
+fn add_image_to_history(state: &AppState, image_path: PathBuf) {
+    // 1. 更新最后一张截图的路径
+    *state.last_screenshot_path.lock().unwrap() = Some(image_path.clone());
+
+    // 2. 将新截图添加到历史记录列表的头部
+    let mut history = state.screenshot_history.lock().unwrap();
+    history.insert(0, image_path);
+
+    // 3. 限制历史记录数量（例如保留最近 20 张）
+    if history.len() > 20 {
+        if let Some(old_path) = history.pop() {
+            // 删除最旧的文件以节省空间
+            let _ = fs::remove_file(old_path);
+        }
+    }
+
+    // 4. 重置查看历史的索引，确保下一次按 F3 显示最新的图片
+    *state.history_index.lock().unwrap() = 0;
+
+    println!("[COMMANDS] 图片已保存至历史记录，当前历史数: {}", history.len());
+}
 
 // 隐藏加载窗口并释放截图锁的辅助函数
 fn hide_loading_and_release_lock(app: &tauri::AppHandle) {
@@ -495,19 +564,24 @@ fn perform_ocr(app: &tauri::AppHandle, image_path_str: &str, settings: &AppSetti
 fn create_and_show_image_viewer_window(app: &tauri::AppHandle, payload: ImageViewerPayload) {
     let handle = app.clone();
     let handle_for_closure = handle.clone();
+    // 确保窗口操作在主线程上执行
     handle.run_on_main_thread(move || {
         if let Some(window) = handle_for_closure.get_window("image_viewer") {
-            window.emit("display-image", payload).unwrap();
-            window.show().unwrap(); window.set_focus().unwrap();
+            // 如果窗口已存在，直接发送数据并显示
+            let _ = window.emit("display-image", payload);
+            let _ = window.show();
+            let _ = window.set_focus();
         } else {
+            // 如果窗口不存在，则创建它
             let builder = tauri::WindowBuilder::new(&handle_for_closure, "image_viewer", tauri::WindowUrl::App("image_viewer.html".into()))
                 .title("截图预览").decorations(false).transparent(true).resizable(true).skip_taskbar(true).visible(false);
             if let Ok(window) = builder.build() {
                 let window_clone = window.clone();
+                // 监听 "tauri://created" 事件，确保在 webview 加载完成后再发送数据
                 window.once("tauri://created", move |_| {
-                    window_clone.emit("display-image", payload).unwrap();
+                    let _ = window_clone.emit("display-image", payload);
                 });
             }
         }
-    }).unwrap();
+    }).unwrap_or_else(|e| eprintln!("[UI] 无法在主线程上创建或显示预览窗口: {}", e));
 }
