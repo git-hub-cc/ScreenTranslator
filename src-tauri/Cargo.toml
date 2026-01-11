@@ -24,7 +24,7 @@ tauri = { version = "1.6", features = [
 ] }
 tauri-plugin-autostart = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v1" }
 
-# --- 新增：单实例插件 (用于防止重复运行并唤醒窗口) ---
+# 单实例插件 (用于防止重复运行并唤醒窗口)
 tauri-plugin-single-instance = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v1" }
 
 # 序列化
@@ -51,7 +51,7 @@ encoding_rs = "0.8"
 # 用于下载引擎和解压
 reqwest = { version = "0.11", features = ["stream", "json"] }
 futures-util = "0.3"
-zip = "0.6"
+# 移除 zip 依赖，仅使用 sevenz-rust 处理 7z 格式
 sevenz-rust = "0.1"
 
 [features]

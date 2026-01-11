@@ -34,7 +34,8 @@ const OCR_EXE_NAME: &str = "RapidOCR-json.exe";
 const OCR_DIR_NAME: &str = "RapidOCR-json_v0.2.0";
 
 // 翻译引擎 (LocalTranslator)
-const TRANSLATOR_URL: &str = "https://github.com/git-hub-cc/LocalTranslator/releases/download/V0.1.0/LocalTranslator-0.1.0.zip";
+// 修改：升级到 0.2.0 版本，使用 7z 格式
+const TRANSLATOR_URL: &str = "https://github.com/git-hub-cc/LocalTranslator/releases/download/V0.2.0/LocalTranslator-0.2.0.7z";
 const TRANSLATOR_EXE_NAME: &str = "translate_engine.exe";
 
 // --- Tauri 命令定义 ---
@@ -44,7 +45,7 @@ const TRANSLATOR_EXE_NAME: &str = "translate_engine.exe";
 pub async fn check_ocr_status(app: tauri::AppHandle) -> Result<bool, String> {
     let local_data_dir = app.path_resolver().app_local_data_dir()
         .ok_or("无法获取本地数据目录")?;
-    // 修正：在路径中加入子目录
+    // 在路径中加入子目录
     let exe_path = local_data_dir.join(OCR_DIR_NAME).join(OCR_EXE_NAME);
     let exists = exe_path.exists();
     println!("[STATUS] 检查 OCR 状态: 路径='{:?}', 是否存在={}", exe_path, exists);
@@ -132,6 +133,8 @@ pub async fn download_ocr(app: tauri::AppHandle) -> Result<(), String> {
 pub async fn check_translator_status(app: tauri::AppHandle) -> Result<bool, String> {
     let local_data_dir = app.path_resolver().app_local_data_dir()
         .ok_or("无法获取本地数据目录")?;
+    // 注意：如果新版 7z 解压后有一层文件夹（如 LocalTranslator-0.2.0），可能需要调整此路径
+    // 目前保持原逻辑，假设 exe 直接或间接位于我们预期的位置
     let exe_path = local_data_dir.join(TRANSLATOR_EXE_NAME);
     Ok(exe_path.exists())
 }
@@ -143,15 +146,19 @@ pub async fn download_translator(app: tauri::AppHandle) -> Result<(), String> {
     if !local_data_dir.exists() {
         fs::create_dir_all(&local_data_dir).map_err(|e| format!("创建目录失败: {}", e))?;
     }
-    let zip_path = local_data_dir.join("translator.zip");
+
+    // 修改：文件后缀改为 .7z
+    let archive_path = local_data_dir.join("translator.7z");
 
     // 1. 下载文件
+    println!("[DOWNLOAD_TRANS] 正在从 URL 下载: {}", TRANSLATOR_URL);
     let client = reqwest::Client::new();
     let res = client.get(TRANSLATOR_URL).send().await.map_err(|e| format!("请求失败: {}", e))?;
     let total_size = res.content_length().unwrap_or(0);
     let mut downloaded: u64 = 0;
     let mut stream = res.bytes_stream();
-    let mut file = fs::File::create(&zip_path).map_err(|e| format!("创建文件失败: {}", e))?;
+    let mut file = fs::File::create(&archive_path).map_err(|e| format!("创建文件失败: {}", e))?;
+
     while let Some(item) = stream.next().await {
         let chunk = item.map_err(|e| format!("下载出错: {}", e))?;
         file.write_all(&chunk).map_err(|e| format!("写入文件失败: {}", e))?;
@@ -161,32 +168,17 @@ pub async fn download_translator(app: tauri::AppHandle) -> Result<(), String> {
         }).unwrap_or(());
     }
 
-    // 2. 解压文件 (.zip)
+    // 2. 解压文件 (.7z) - 修改为使用 sevenz_rust
     window.emit("download-progress", DownloadProgressPayload {
         progress: total_size, total: total_size, status: "extracting".to_string(),
     }).unwrap_or(());
 
-    let file = fs::File::open(&zip_path).map_err(|e| format!("打开压缩包失败: {}", e))?;
-    let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("读取压缩包失败: {}", e))?;
-    for i in 0..archive.len() {
-        let mut file = archive.by_index(i).map_err(|e| format!("读取文件失败: {}", e))?;
-        let outpath = match file.enclosed_name() {
-            Some(path) => local_data_dir.join(path),
-            None => continue,
-        };
-        if file.name().ends_with('/') {
-            fs::create_dir_all(&outpath).map_err(|e| format!("创建目录失败: {}", e))?;
-        } else {
-            if let Some(p) = outpath.parent() {
-                if !p.exists() { fs::create_dir_all(&p).map_err(|e| format!("创建父目录失败: {}", e))?; }
-            }
-            let mut outfile = fs::File::create(&outpath).map_err(|e| format!("创建解压文件失败: {}", e))?;
-            std::io::copy(&mut file, &mut outfile).map_err(|e| format!("解压失败: {}", e))?;
-        }
-    }
+    // 使用 sevenz-rust 进行解压，替代原来的 zip 逻辑
+    sevenz_rust::decompress_file(&archive_path, &local_data_dir)
+        .map_err(|e| format!("解压7z文件失败: {:?}", e))?;
 
     // 3. 清理并通知完成
-    let _ = fs::remove_file(zip_path);
+    let _ = fs::remove_file(archive_path);
     window.emit("download-progress", DownloadProgressPayload {
         progress: total_size, total: total_size, status: "completed".to_string(),
     }).unwrap_or(());
@@ -297,10 +289,6 @@ pub async fn process_image_from_path(
 ///
 /// 此函数将文件I/O操作（复制、读取）放到后台线程中，避免阻塞UI。
 /// 完成后，在主线程上显示预览窗口。
-///
-/// 设计说明:
-/// 虽然用户在需求中提到了`results.html`，但`image_viewer.html`更适合纯图片预览，
-/// 并且它内置了OCR、复制、保存等按钮，完全符合“将图片作为截图内容”的需求，提供了更好的用户体验。
 pub fn handle_external_image_open(app: &tauri::AppHandle, external_path: &Path) {
     println!("[COMMANDS] 检测到通过文件关联打开图片: {:?}", external_path);
 
