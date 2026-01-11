@@ -190,6 +190,25 @@ body {
     cursor: crosshair;
 }
 
+/*
+   --- 新增：截图窗口淡入淡出动画 ---
+   该类用于 screenshot.html 的 body 标签。
+*/
+.screenshot-transition {
+    /* 初始状态：完全透明 */
+    opacity: 0;
+    /* 过渡效果：针对 opacity 属性，时长 200ms，使用 ease-in-out 曲线实现丝滑感 */
+    transition: opacity 200ms ease-in-out;
+    /* 确保背景完全透明，防止动画过程中出现白底闪烁 */
+    background-color: transparent !important;
+}
+
+/* 激活状态：完全不透明 */
+.screenshot-transition.active {
+    opacity: 1;
+}
+
+
 /* --- 结果窗口 (results.html) --- */
 body[data-tauri-drag-region] {
     cursor: grab;

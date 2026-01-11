@@ -6,7 +6,13 @@
     <title>Screenshot</title>
     <link rel="stylesheet" href="css/style.css" />
 </head>
-<body>
+<!--
+    新增：
+    添加 "screenshot-transition" 类。
+    根据 style.css 的定义，这会使页面默认 opacity 为 0。
+    JS 将在图片准备好后添加 "active" 类来触发淡入动画。
+-->
+<body class="screenshot-transition">
 <!-- 截图画布，用于绘制蒙版和选框 -->
 <canvas id="canvas"></canvas>
 

@@ -9,6 +9,8 @@ const { writeText } = window.__TAURI__.clipboard;
 // --- DOM 元素获取 ---
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
+// 获取 body 元素，用于控制 CSS 类从而触发淡入淡出动画
+const bodyEl = document.body;
 
 // --- 状态变量定义 ---
 let isDrawing = false;      // 标记是否正在绘制选区
@@ -88,6 +90,14 @@ function setupCanvas(screenshotDataUrl) {
 
         // 图片加载成功后，立即进行首次绘制
         draw();
+
+        // --- 核心新增：触发淡入动画 ---
+        // 此时图片已渲染到 Canvas 上，但因为 body 的 opacity 为 0，用户还看不见。
+        // 现在我们添加 .active 类，配合 CSS 的 transition 属性，实现 200ms 的平滑淡入。
+        // 使用 requestAnimationFrame 确保在下一帧（即渲染完成后）触发，避免闪烁。
+        requestAnimationFrame(() => {
+            bodyEl.classList.add('active');
+        });
     };
     screenCapture.onerror = (err) => {
         console.error("加载截图数据URL失败:", err);
@@ -258,16 +268,27 @@ function draw() {
 }
 
 /**
- * 封装取消截图的逻辑：隐藏窗口并通知后端释放截图锁。
+ * 封装取消截图的逻辑：触发淡出动画，隐藏窗口并通知后端释放截图锁。
  */
 async function cancel_screenshot() {
-    console.log("截图已取消，正在隐藏窗口并通知后端。");
-    await appWindow.hide();
-    try {
-        await invoke('cancel_screenshot');
-    } catch (error) {
-        console.error("调用后端 'cancel_screenshot' 失败:", error);
-    }
+    console.log("截图操作已取消，准备淡出...");
+
+    // 1. 触发 CSS 淡出动画（移除 active 类，opacity 变回 0）
+    bodyEl.classList.remove('active');
+
+    // 2. 等待 200ms 让 CSS 过渡动画播放完毕
+    // 注意：这里的时间必须 >= CSS 中的 transition duration
+    setTimeout(async () => {
+        console.log("淡出动画结束，正在隐藏窗口并通知后端。");
+        // 3. 真正隐藏窗口
+        await appWindow.hide();
+        // 4. 通知后端释放锁
+        try {
+            await invoke('cancel_screenshot');
+        } catch (error) {
+            console.error("调用后端 'cancel_screenshot' 失败:", error);
+        }
+    }, 200); // 200ms 对应 CSS 中的 transition 时间
 }
 
 /**
@@ -340,7 +361,8 @@ canvas.addEventListener('mousemove', (e) => {
 canvas.addEventListener('mouseup', async (e) => {
     if (e.button !== 0 || !isDrawing) return;
     isDrawing = false;
-    await appWindow.hide();
+
+    // --- 修改逻辑：先淡出，再隐藏和处理 ---
 
     const x = Math.min(startX, currentX);
     const y = Math.min(startY, currentY);
@@ -353,28 +375,37 @@ canvas.addEventListener('mouseup', async (e) => {
         return;
     }
 
-    // --- 坐标修正：将选区坐标转换回原始图片坐标系发送给后端 ---
-    // 后端裁剪是基于原始图片的，所以这里也需要按比例转换
-    const scaleX = screenCapture.naturalWidth / canvas.width;
-    const scaleY = screenCapture.naturalHeight / canvas.height;
+    // 1. 触发淡出
+    bodyEl.classList.remove('active');
 
-    const realX = x * scaleX;
-    const realY = y * scaleY;
-    const realW = width * scaleX;
-    const realH = height * scaleY;
+    // 2. 等待动画结束
+    setTimeout(async () => {
+        // 3. 隐藏窗口
+        await appWindow.hide();
 
-    // 将有效的选区信息发送给后端进行处理
-    try {
-        await invoke('process_screenshot_area', {
-            x: realX,
-            y: realY,
-            width: realW,
-            height: realH
-        });
-    } catch (error) {
-        console.error("调用后端 'process_screenshot_area' 指令失败:", error);
-        await cancel_screenshot(); // 即使失败也要确保取消截图状态
-    }
+        // 4. 处理数据
+        // --- 坐标修正：将选区坐标转换回原始图片坐标系发送给后端 ---
+        const scaleX = screenCapture.naturalWidth / canvas.width;
+        const scaleY = screenCapture.naturalHeight / canvas.height;
+
+        const realX = x * scaleX;
+        const realY = y * scaleY;
+        const realW = width * scaleX;
+        const realH = height * scaleY;
+
+        // 将有效的选区信息发送给后端进行处理
+        try {
+            await invoke('process_screenshot_area', {
+                x: realX,
+                y: realY,
+                width: realW,
+                height: realH
+            });
+        } catch (error) {
+            console.error("调用后端 'process_screenshot_area' 指令失败:", error);
+            await cancel_screenshot(); // 即使失败也要确保取消截图状态
+        }
+    }, 200); // 延迟 200ms
 });
 
 // 监听鼠标右键点击，用于取消截图
