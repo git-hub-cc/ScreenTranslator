@@ -8,12 +8,15 @@
   },
   "package": {
     "productName": "ScreenTranslator",
-    "version": "0.4.0"
+    "version": "0.4.1"
   },
   "tauri": {
     "allowlist": {
       "all": false,
       "window": {
+        "all": true
+      },
+      "dialog": {
         "all": true
       },
       "shell": {

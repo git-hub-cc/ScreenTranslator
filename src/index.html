@@ -118,9 +118,16 @@
             </div>
             <button id="download-btn" class="download-button">下载 / 更新翻译引擎</button>
 
-            <div id="progress-container" class="progress-container">
-                <progress id="download-progress" value="0" max="100"></progress>
-                <div id="progress-label" class="progress-text">准备下载...</div>
+            <div id="packages-progress-container" class="progress-container">
+                <div class="progress-text" style="text-align: left; margin-bottom: 4px;">依赖库 (Packages)</div>
+                <progress id="packages-download-progress" value="0" max="100"></progress>
+                <div id="packages-progress-label" class="progress-text">准备下载...</div>
+            </div>
+
+            <div id="engine-progress-container" class="progress-container">
+                <div class="progress-text" style="text-align: left; margin-bottom: 4px;">翻译引擎 (Engine)</div>
+                <progress id="engine-download-progress" value="0" max="100"></progress>
+                <div id="engine-progress-label" class="progress-text">等待中...</div>
             </div>
             <small style="display:block; margin-top:8px; color:#888;">
                 启用“识别并翻译”模式需要下载约 300MB 的离线模型包。

@@ -27,9 +27,14 @@ const ocrProgressLabel = document.getElementById('ocr-progress-label');
 // 翻译引擎管理相关元素
 const engineStatusBadge = document.getElementById('engine-status');
 const downloadBtn = document.getElementById('download-btn');
-const progressContainer = document.getElementById('progress-container');
-const progressBar = document.getElementById('download-progress');
-const progressLabel = document.getElementById('progress-label');
+
+const packagesProgressContainer = document.getElementById('packages-progress-container');
+const packagesProgressBar = document.getElementById('packages-download-progress');
+const packagesProgressLabel = document.getElementById('packages-progress-label');
+
+const engineProgressContainer = document.getElementById('engine-progress-container');
+const engineProgressBar = document.getElementById('engine-download-progress');
+const engineProgressLabel = document.getElementById('engine-progress-label');
 
 // --- 全局状态与默认值 ---
 // 用于管理前端 UI 状态和缓存数据
@@ -285,9 +290,15 @@ downloadBtn.addEventListener('click', async () => {
     isTranslatorDownloading = true;
     downloadBtn.disabled = true;
     downloadBtn.textContent = "正在连接...";
-    progressContainer.style.display = 'block';
-    progressBar.value = 0;
-    progressLabel.textContent = "初始化...";
+    
+    // 显示两个进度容器
+    packagesProgressContainer.style.display = 'block';
+    packagesProgressBar.value = 0;
+    packagesProgressLabel.textContent = "初始化...";
+    
+    engineProgressContainer.style.display = 'block';
+    engineProgressBar.value = 0;
+    engineProgressLabel.textContent = "等待依赖库下载...";
 
     try {
         await invoke('download_translator');
@@ -297,7 +308,8 @@ downloadBtn.addEventListener('click', async () => {
         isTranslatorDownloading = false;
         downloadBtn.disabled = false;
         updateTranslatorUI();
-        progressContainer.style.display = 'none';
+        packagesProgressContainer.style.display = 'none';
+        engineProgressContainer.style.display = 'none';
     }
 });
 
@@ -331,26 +343,44 @@ listen('ocr-download-progress', (event) => {
 
 // 4. 监听后端发送的翻译引擎下载进度事件
 listen('download-progress', (event) => {
-    const { progress, total, status } = event.payload;
+    const { progress, total, status, target } = event.payload;
+    
+    // 根据 target 选择操作的元素
+    let currentBar, currentLabel;
+    if (target === 'packages') {
+        currentBar = packagesProgressBar;
+        currentLabel = packagesProgressLabel;
+    } else if (target === 'engine') {
+        currentBar = engineProgressBar;
+        currentLabel = engineProgressLabel;
+    } else {
+        return; // 未知目标
+    }
 
     if (status === 'downloading') {
         const percent = Math.round((progress / total) * 100);
-        progressBar.value = percent;
+        currentBar.value = percent;
         const downloadedMB = (progress / 1024 / 1024).toFixed(1);
         const totalMB = (total / 1024 / 1024).toFixed(1);
-        progressLabel.textContent = `正在下载... ${percent}% (${downloadedMB}MB / ${totalMB}MB)`;
+        currentLabel.textContent = `正在下载... ${percent}% (${downloadedMB}MB / ${totalMB}MB)`;
     } else if (status === 'extracting') {
-        progressBar.removeAttribute('value');
-        progressLabel.textContent = "下载完成，正在解压安装，请稍候...";
+        currentBar.removeAttribute('value');
+        currentLabel.textContent = "下载完成，正在解压安装，请稍候...";
     } else if (status === 'completed') {
-        progressBar.value = 100;
-        progressLabel.textContent = "安装完成！";
-        isTranslatorDownloading = false;
-        isTranslatorInstalled = true;
-        downloadBtn.disabled = false;
-        updateTranslatorUI();
-
-        setTimeout(() => { progressContainer.style.display = 'none'; }, 2000);
+        currentBar.value = 100;
+        currentLabel.textContent = "处理完成！";
+        
+        // 如果是引擎下载完成，说明整个流程结束
+        if (target === 'engine') {
+            isTranslatorDownloading = false;
+            isTranslatorInstalled = true;
+            downloadBtn.disabled = false;
+            updateTranslatorUI();
+            setTimeout(() => { 
+                packagesProgressContainer.style.display = 'none'; 
+                engineProgressContainer.style.display = 'none';
+            }, 3000);
+        }
     }
 });
 
