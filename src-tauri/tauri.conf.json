@@ -16,6 +16,9 @@
       "window": {
         "all": true
       },
+      "dialog": {
+        "all": true
+      },
       "shell": {
         "all": false,
         "sidecar": true,

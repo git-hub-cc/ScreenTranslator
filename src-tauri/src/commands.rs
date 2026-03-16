@@ -24,6 +24,7 @@ struct DownloadProgressPayload {
     progress: u64,
     total: u64,
     status: String,
+    target: Option<String>,
 }
 
 // --- 常量定义 ---
@@ -34,8 +35,9 @@ const OCR_EXE_NAME: &str = "RapidOCR-json.exe";
 const OCR_DIR_NAME: &str = "RapidOCR-json_v0.2.0";
 
 // 翻译引擎 (LocalTranslator)
-// 修改：升级到 0.2.0 版本，使用 7z 格式
-const TRANSLATOR_URL: &str = "https://github.com/git-hub-cc/LocalTranslator/releases/download/V0.2.0/LocalTranslator-0.2.0.7z";
+// 修改：升级到 0.2.0 版本，不再使用 7z 格式，改为两个文件
+const TRANSLATOR_PACKAGES_URL: &str = "https://github.com/git-hub-cc/LocalTranslator/releases/download/V0.2.0/packages.zip";
+const TRANSLATOR_EXE_URL: &str = "https://github.com/git-hub-cc/LocalTranslator/releases/download/V0.2.0/translate_engine_cpu.exe";
 const TRANSLATOR_EXE_NAME: &str = "translate_engine.exe";
 
 // --- Tauri 命令定义 ---
@@ -104,14 +106,18 @@ pub async fn download_ocr(app: tauri::AppHandle) -> Result<(), String> {
         downloaded += chunk.len() as u64;
         window.emit("ocr-download-progress", DownloadProgressPayload {
             progress: downloaded, total: total_size, status: "downloading".to_string(),
+            target: Some("ocr".to_string()),
         }).unwrap_or(());
     }
+    file.flush().map_err(|e| format!("刷新文件失败: {}", e))?;
+    file.sync_all().map_err(|e| format!("同步文件失败: {}", e))?;
     println!("[DOWNLOAD_OCR] 下载完成. 总共下载 {} bytes", downloaded);
 
     // 2. 解压文件 (.7z)
     println!("[DOWNLOAD_OCR] 开始解压文件: {:?}", archive_path);
     window.emit("ocr-download-progress", DownloadProgressPayload {
         progress: total_size, total: total_size, status: "extracting".to_string(),
+        target: Some("ocr".to_string()),
     }).unwrap_or(());
 
     sevenz_rust::decompress_file(&archive_path, &local_data_dir)
@@ -128,6 +134,7 @@ pub async fn download_ocr(app: tauri::AppHandle) -> Result<(), String> {
     println!("[DOWNLOAD_OCR] OCR 引擎安装流程完成.");
     window.emit("ocr-download-progress", DownloadProgressPayload {
         progress: total_size, total: total_size, status: "completed".to_string(),
+        target: Some("ocr".to_string()),
     }).unwrap_or(());
 
     Ok(())
@@ -153,40 +160,82 @@ pub async fn download_translator(app: tauri::AppHandle) -> Result<(), String> {
         fs::create_dir_all(&local_data_dir).map_err(|e| format!("创建目录失败: {}", e))?;
     }
 
-    // 修改：文件后缀改为 .7z
-    let archive_path = local_data_dir.join("translator.7z");
-
-    // 1. 下载文件
-    println!("[DOWNLOAD_TRANS] 正在从 URL 下载: {}", TRANSLATOR_URL);
     let client = reqwest::Client::new();
-    let res = client.get(TRANSLATOR_URL).send().await.map_err(|e| format!("请求失败: {}", e))?;
+
+    // 1. 下载并提取 packages.zip
+    println!("[DOWNLOAD_TRANS] 正在下载包文件: {}", TRANSLATOR_PACKAGES_URL);
+    let packages_path = local_data_dir.join("packages.zip");
+    
+    let res = client.get(TRANSLATOR_PACKAGES_URL).send().await.map_err(|e| format!("请求包文件失败: {}", e))?;
     let total_size = res.content_length().unwrap_or(0);
     let mut downloaded: u64 = 0;
     let mut stream = res.bytes_stream();
-    let mut file = fs::File::create(&archive_path).map_err(|e| format!("创建文件失败: {}", e))?;
+    let mut file = fs::File::create(&packages_path).map_err(|e| format!("创建包文件失败: {}", e))?;
 
     while let Some(item) = stream.next().await {
-        let chunk = item.map_err(|e| format!("下载出错: {}", e))?;
-        file.write_all(&chunk).map_err(|e| format!("写入文件失败: {}", e))?;
+        let chunk = item.map_err(|e| format!("下载包文件出错: {}", e))?;
+        file.write_all(&chunk).map_err(|e| format!("写入包文件失败: {}", e))?;
         downloaded += chunk.len() as u64;
         window.emit("download-progress", DownloadProgressPayload {
             progress: downloaded, total: total_size, status: "downloading".to_string(),
+            target: Some("packages".to_string()),
         }).unwrap_or(());
     }
-
-    // 2. 解压文件 (.7z) - 修改为使用 sevenz_rust
+    file.flush().map_err(|e| format!("刷新包文件失败: {}", e))?;
+    file.sync_all().map_err(|e| format!("同步包文件失败: {}", e))?;
+    
+    println!("[DOWNLOAD_TRANS] 正在解压包文件...");
     window.emit("download-progress", DownloadProgressPayload {
         progress: total_size, total: total_size, status: "extracting".to_string(),
+        target: Some("packages".to_string()),
     }).unwrap_or(());
 
-    // 使用 sevenz-rust 进行解压，替代原来的 zip 逻辑
-    sevenz_rust::decompress_file(&archive_path, &local_data_dir)
-        .map_err(|e| format!("解压7z文件失败: {:?}", e))?;
+    let zip_file = fs::File::open(&packages_path).map_err(|e| format!("无法打开 zip 文件: {}", e))?;
+    let mut archive = zip::ZipArchive::new(zip_file).map_err(|e| format!("无法读取 zip 存档: {}", e))?;
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i).map_err(|e| format!("无法读取 zip 中的文件: {}", e))?;
+        let outpath = match file.enclosed_name() {
+            Some(path) => local_data_dir.join(path),
+            None => continue,
+        };
+        if (*file.name()).ends_with('/') {
+            fs::create_dir_all(&outpath).unwrap();
+        } else {
+            if let Some(p) = outpath.parent() {
+                if !p.exists() {
+                    fs::create_dir_all(&p).unwrap();
+                }
+            }
+            let mut outfile = fs::File::create(&outpath).map_err(|e| format!("创建解压文件失败: {}", e))?;
+            std::io::copy(&mut file, &mut outfile).map_err(|e| format!("写入解压文件失败: {}", e))?;
+        }
+    }
+    let _ = fs::remove_file(packages_path);
 
-    // 3. 清理并通知完成
-    let _ = fs::remove_file(archive_path);
+    // 2. 下载 translate_engine_cpu.exe 并重命名
+    println!("[DOWNLOAD_TRANS] 正在下载翻译引擎: {}", TRANSLATOR_EXE_URL);
+    let exe_path = local_data_dir.join(TRANSLATOR_EXE_NAME);
+    let res = client.get(TRANSLATOR_EXE_URL).send().await.map_err(|e| format!("请求引擎文件失败: {}", e))?;
+    let total_size = res.content_length().unwrap_or(0);
+    let mut downloaded: u64 = 0;
+    let mut stream = res.bytes_stream();
+    let mut file = fs::File::create(&exe_path).map_err(|e| format!("创建引擎文件失败: {}", e))?;
+
+    while let Some(item) = stream.next().await {
+        let chunk = item.map_err(|e| format!("下载引擎文件出错: {}", e))?;
+        file.write_all(&chunk).map_err(|e| format!("写入引擎文件失败: {}", e))?;
+        downloaded += chunk.len() as u64;
+        window.emit("download-progress", DownloadProgressPayload {
+            progress: downloaded, total: total_size, status: "downloading".to_string(),
+            target: Some("engine".to_string()),
+        }).unwrap_or(());
+    }
+    file.flush().map_err(|e| format!("刷新引擎文件失败: {}", e))?;
+    file.sync_all().map_err(|e| format!("同步引擎文件失败: {}", e))?;
+
     window.emit("download-progress", DownloadProgressPayload {
         progress: total_size, total: total_size, status: "completed".to_string(),
+        target: Some("engine".to_string()),
     }).unwrap_or(());
     Ok(())
 }
@@ -518,7 +567,11 @@ fn perform_ocr(app: &tauri::AppHandle, image_path_str: &str, settings: &AppSetti
     #[cfg(windows)] const CREATE_NO_WINDOW: u32 = 0x08000000;
     let mut command = StdCommand::new(&ocr_exe_path);
     let arg = format!("--image_path={}", image_path_str);
-    command.args(&[arg.clone()]).current_dir(&ocr_dir);
+    command.args(&[arg.clone()])
+        .current_dir(&ocr_dir)
+        .env("PYTHONIOENCODING", "utf-8")
+        .env("PYTHONUTF8", "1")
+        .env("PYTHONLEGACYWINDOWSSTDIO", "0");
     #[cfg(windows)] command.creation_flags(CREATE_NO_WINDOW);
 
     println!("[OCR] 准备执行命令: {:?} with arg: '{}'", ocr_exe_path, arg);

@@ -3,8 +3,7 @@
 use serde::{Deserialize};
 use tauri::AppHandle;
 use std::process::Command;
-// --- 核心修复：启用 GBK 解码器 ---
-use encoding_rs::GBK;
+// 移除 GBK 依赖，统一使用 UTF-8
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -64,6 +63,9 @@ impl Translator for LocalTranslator {
 
         let mut command = Command::new(&translator_exe_path);
         command.current_dir(working_dir)
+            .env("PYTHONIOENCODING", "utf-8")
+            .env("PYTHONUTF8", "1")
+            .env("PYTHONLEGACYWINDOWSSTDIO", "0")
             .args(&[
                 "--text", text,
                 "--source", source_lang,
@@ -80,19 +82,15 @@ impl Translator for LocalTranslator {
         println!("[TRANSLATOR] 进程执行完毕. Status: {:?}", output.status);
 
         if !output.status.success() {
-            // 对于 stderr，我们仍然可以假设它是 UTF-8 或者使用 GBK 解码
-            let (decoded_stderr, _, _) = GBK.decode(&output.stderr);
-            let stderr = decoded_stderr.into_owned();
+            // 先尝试 UTF-8 解码 stderr
+            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
             eprintln!("[TRANSLATOR] 进程执行出错, Status: {:?}, Stderr: {}", output.status, stderr);
             return Err(format!("翻译进程执行出错: {}", stderr));
         }
 
-        // --- 核心修复：使用 GBK 解码 stdout ---
-        // `translate_engine.exe` 在 Windows 上很可能以 GBK 编码输出中文字符。
-        // 我们需要先用 GBK 解码器将原始字节转换为正确的 UTF-8 字符串，再进行 JSON 解析。
-        let (decoded_stdout, _, _) = GBK.decode(&output.stdout);
-        let stdout = decoded_stdout.into_owned();
-        println!("[TRANSLATOR] 原始输出 (GBK decoded stdout): {}", stdout);
+        // --- 核心修复：统一使用 UTF-8 解码 ---
+        let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+        println!("[TRANSLATOR] 原始输出 (UTF-8 decoded stdout): {}", stdout);
 
         let response: LocalTranslationResponse = serde_json::from_str(&stdout)
             .map_err(|e| format!("解析翻译结果JSON失败: {}. 原始输出: {}", e, stdout))?;
